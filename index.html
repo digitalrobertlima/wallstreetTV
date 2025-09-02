@@ -3,10 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; connect-src https://api.bitpreco.com https://api.binance.com https://api.open-meteo.com https://api.coingecko.com https://api.exchangerate.host https://www.bitstamp.net; font-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src https://api.bitpreco.com https://api.binance.com https://api.open-meteo.com https://api.coingecko.com https://api.exchangerate.host https://www.bitstamp.net; font-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests">
   <title>MESA • WallStreetTV Crypto — Multi‑fonte</title>
   <meta name="description" content="Painel estilo TV para cripto (BRL) com dados em tempo real multi‑fonte (BitPreço, Binance, CoinGecko)." />
   <meta name="theme-color" content="#0A0C10" />
+  <!-- iOS PWA meta -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" sizes="192x192" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAAAwCAYAAAC6Qz9uAAAACXBIWXMAAAsSAAALEgHS3X78AAAAB3RJTUUH5AwBEiU9m8cJcgAAABl0RVh0Q29tbWVudABDcmVhdGVkIHdpdGggYWkudmVyY2Vsb2cudWvP6qkAAABLSURBVFjD7cExAQAAAMKg9U9tCF8gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgG3cQAAQe2C7oAAAAASUVORK5CYII=" />
+  <link rel="apple-touch-icon" sizes="512x512" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAQAAABccqhmAAAACXBIWXMAAAsSAAALEgHS3X78AAAAB3RJTUUH5AwBEiY0r3w5VwAAABl0RVh0Q29tbWVudABDcmVhdGVkIHdpdGggYWkudmVyY2Vsb2cudWvP6qkAAABTSURBVHja7cExAQAAAMKg9U9tDwcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP4B9mIAAU0mH48AAAAASUVORK5CYII=" />
+  <!-- Resource hints for faster first paint -->
+  <link rel="preconnect" href="https://api.bitpreco.com" crossorigin />
+  <link rel="preconnect" href="https://api.binance.com" crossorigin />
+  <link rel="preconnect" href="https://api.coingecko.com" crossorigin />
+  <link rel="preconnect" href="https://api.open-meteo.com" />
+  <link rel="preconnect" href="https://api.exchangerate.host" />
+  <link rel="preconnect" href="https://www.bitstamp.net" />
+  <link rel="dns-prefetch" href="//api.bitpreco.com" />
+  <link rel="dns-prefetch" href="//api.binance.com" />
+  <link rel="dns-prefetch" href="//api.coingecko.com" />
   <meta name="robots" content="index,follow" />
   <meta property="og:title" content="MESA • WallStreetTV Crypto — Multi‑fonte" />
   <meta property="og:description" content="Painel estilo TV para cripto (BRL) com dados em tempo real multi‑fonte (BitPreço, Binance, CoinGecko)." />
@@ -78,6 +93,25 @@
   </div>
   
   
+  
+  
+  
+</div>
+
+<!-- iOS Install instructions modal -->
+<div id="iosInstall" class="ios-modal" hidden role="dialog" aria-label="Instalar no iOS">
+  <div class="ios-box">
+    <div class="ios-head">
+      <strong>Instalar no iPhone/iPad</strong>
+      <button id="iosClose" class="btn" title="Fechar">Fechar</button>
+    </div>
+    <ol class="ios-steps">
+      <li>Aperte o botão Compartilhar do Safari (ícone quadrado com seta para cima).</li>
+      <li>Escolha “Adicionar à Tela de Início”.</li>
+      <li>Confirme com “Adicionar”.</li>
+    </ol>
+  </div>
+  <div class="ios-backdrop" aria-hidden="true"></div>
   
   
   

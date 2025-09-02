@@ -120,6 +120,9 @@
   const updateBanner = document.getElementById('updateBanner');
   const ubReload = document.getElementById('ubReload');
   const ubLater = document.getElementById('ubLater');
+  // iOS install modal
+  const iosModal = document.getElementById('iosInstall');
+  const iosClose = document.getElementById('iosClose');
 
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
   if(versionBadge) versionBadge.textContent = APP_VERSION;
@@ -218,11 +221,16 @@
     }, 1200);
   });
 
+  function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+  function showIOS(){ if(iosModal) iosModal.hidden = false; }
+  function hideIOS(){ if(iosModal) iosModal.hidden = true; }
+  if(iosClose){ iosClose.addEventListener('click', hideIOS); }
   if(ibInstall){ ibInstall.addEventListener('click', async ()=>{
     if(deferredPrompt && deferredPrompt.prompt){ try{ deferredPrompt.prompt(); const choice = await deferredPrompt.userChoice; if(choice && choice.outcome === 'accepted'){ hideInstallBanner(); try{ localStorage.setItem(LS_KEYS.installed,'1'); }catch{} } else { markSnooze(); hideInstallBanner(); } }catch{ markSnooze(); hideInstallBanner(); } finally { deferredPrompt = null; } }
     else {
       // Sem beforeinstallprompt (iOS Safari / desktop não suportado): mostrar instruções em tooltip simples
   hideInstallBanner();
+      if(isIOS()){ showIOS(); return; }
       try{
         const msg = 'Para instalar: use “Adicionar à Tela de Início” no menu do navegador.';
         ibInstall.title = msg; ibInstall.blur();

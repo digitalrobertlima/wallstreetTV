@@ -213,3 +213,11 @@ footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space
 .legend{font-size:12px; color:var(--muted)}
 .open{color:var(--up); font-weight:800}
 .closed{color:var(--down); font-weight:800}
+
+/* iOS Install modal */
+.ios-modal[hidden]{display:none}
+.ios-modal{position:fixed; inset:0; z-index:1100; display:grid; place-items:center}
+.ios-backdrop{position:absolute; inset:0; background:rgba(0,0,0,.45); backdrop-filter: blur(6px)}
+.ios-box{position:relative; z-index:1; background:#0b0f16; color:#e6e6e6; border-radius:12px; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08); width:min(92vw, 420px)}
+.ios-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px}
+.ios-steps{margin:0; padding-left:18px; color:#cbd5e1}

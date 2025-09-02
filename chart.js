@@ -5,6 +5,13 @@
   const title = document.getElementById('title'); title.textContent = pair.toUpperCase();
   const canvas = document.getElementById('big');
   const tipEl = (()=>{ const el = document.createElement('div'); el.className='chart-tip'; el.hidden=true; document.body.appendChild(el); return el; })();
+  const symEl = document.getElementById('sym'); if(symEl) symEl.textContent = pair.toUpperCase();
+  const livePriceEl = document.getElementById('livePrice');
+  const liveDeltaEl = document.getElementById('liveDelta');
+  const hiEl = document.getElementById('hi');
+  const loEl = document.getElementById('lo');
+  const voEl = document.getElementById('vo');
+  const microTrack = document.getElementById('microTrack');
 
   const RANGE_MS = { '1h': 3_600_000, '4h': 14_400_000, '24h': 86_400_000 };
   let RG = '4h';
@@ -13,6 +20,7 @@
 
   const ENDPOINTS = {
     CG: (id, vs='brl', d=1) => `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=${vs}&days=${d}&interval=hourly`,
+  CG_MARKETS: (idsCsv) => `https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${idsCsv}&order=market_cap_desc&per_page=50&page=1&price_change_percentage=24h`,
   };
   const CG_IDS = {
     'btc-brl':'bitcoin','eth-brl':'ethereum','bnb-brl':'binancecoin','dash-brl':'dash',
@@ -20,6 +28,8 @@
   };
   const id = CG_IDS[pair] || 'bitcoin';
   let series = []; // [ [ts, price], ... ]
+  let lastPrice = NaN;
+  let microPrints = [];// [{p, t}]
 
   async function getJSON(url){ const r = await fetch(url, { cache:'no-store' }); if(!r.ok) throw new Error('http ' + r.status); return r.json(); }
   function binSizeForRange(key){ switch(key){ case '1h': return 60_000; case '4h': return 5*60_000; default: return 15*60_000; } }
@@ -38,7 +48,44 @@
   seed();
 
   // live: poll BitPreço/CG fallback light for last price and append
-  async function live(){ try{ const cg = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=brl`,{cache:'no-store'}); if(cg.ok){ const j=await cg.json(); const v=Number(j?.[id]?.brl); if(Number.isFinite(v)){ series.push([Date.now(), v]); const cutoff = Date.now() - RANGE_MS['24h']; series = series.filter(x=> x[0] >= cutoff); draw(); } } }catch{} finally { setTimeout(live, 30_000); } }
+  async function live(){
+    try{
+      const [cg, mk] = await Promise.all([
+        fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=brl`,{cache:'no-store'}),
+        fetch(ENDPOINTS.CG_MARKETS(id),{cache:'no-store'})
+      ]);
+      if(cg.ok){
+        const j=await cg.json();
+        const v=Number(j?.[id]?.brl);
+        if(Number.isFinite(v)){
+          const now = Date.now();
+          series.push([now, v]);
+          const cutoff = now - RANGE_MS['24h'];
+          series = series.filter(x=> x[0] >= cutoff);
+          draw();
+          // live readouts
+          if(livePriceEl){ livePriceEl.textContent = fmtBRL.format(v); }
+          if(Number.isFinite(lastPrice)){
+            const d = v - lastPrice; const pct = lastPrice ? (d/lastPrice*100) : 0;
+            const cls = d>0 ? 'up' : d<0 ? 'down' : '';
+            if(liveDeltaEl){ liveDeltaEl.textContent = `${d>=0?'+':''}${pct.toFixed(2)}%`; liveDeltaEl.className = `live-delta ${cls}`; }
+          }
+          lastPrice = v;
+          // micro tape (últimos prints)
+          microPrints.push({ p:v, t: now });
+          microPrints = microPrints.slice(-20);
+          if(microTrack){
+            microTrack.innerHTML = microPrints.map(x=> `<span class="sym">${pair.toUpperCase()}</span><span class="pri">${fmtBRL.format(x.p)}</span>`).join('<span class="sep">·</span>');
+          }
+        }
+      }
+      if(mk.ok){
+        const m = await mk.json(); const rec = Array.isArray(m)? m.find(r=>r?.id===id): null;
+        if(rec){ if(hiEl) hiEl.textContent = Number.isFinite(rec.high_24h) ? fmtBRL.format(rec.high_24h) : '—'; if(loEl) loEl.textContent = Number.isFinite(rec.low_24h) ? fmtBRL.format(rec.low_24h) : '—'; if(voEl) voEl.textContent = Number.isFinite(rec.total_volume) ? new Intl.NumberFormat('pt-BR').format(rec.total_volume) : '—'; }
+      }
+    }catch{}
+    finally { setTimeout(live, 30_000); }
+  }
   live();
 
   if('serviceWorker' in navigator){ window.addEventListener('load', ()=>{ try{ navigator.serviceWorker.register('./sw.js'); }catch{} }); }

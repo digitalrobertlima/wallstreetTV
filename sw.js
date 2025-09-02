@@ -120,12 +120,23 @@ self.addEventListener('fetch', (event) => {
       const now = Date.now();
       let cachedAgeOk = false;
       if(cached){
-        const date = cached.headers.get('date');
-        const ts = date ? Date.parse(date) : 0;
-        if(ts && (now - ts) <= API_TTL_MS) cachedAgeOk = true;
+        // Preferir header custom X-Fetched-At; se ausente, cair para Date
+        const fetchedAt = Number(cached.headers.get('X-Fetched-At') || '0');
+        if(fetchedAt && (now - fetchedAt) <= API_TTL_MS) {
+          cachedAgeOk = true;
+        } else {
+          const date = cached.headers.get('date');
+          const ts = date ? Date.parse(date) : 0;
+          if(ts && (now - ts) <= API_TTL_MS) cachedAgeOk = true;
+        }
       }
       const networkPromise = fetchWithTimeout(event.request, 6000).then(async (res) => {
-        try{ if(res && res.ok){ await cache.put(event.request, res.clone()); } }catch{}
+        try{
+          if(res && res.ok){
+            const stamped = await stampResponse(res);
+            await cache.put(event.request, stamped.clone());
+          }
+        }catch{}
         return res;
       }).catch(() => undefined);
       if(cached && cachedAgeOk){
@@ -166,3 +177,16 @@ self.addEventListener('message', (event) => {
     })());
   }
 });
+
+// Cria uma resposta com header X-Fetched-At para controle de frescor
+async function stampResponse(res){
+  try{
+    const ab = await res.clone().arrayBuffer();
+    const headers = new Headers(res.headers);
+    headers.set('X-Fetched-At', String(Date.now()));
+    return new Response(ab, { status: res.status, statusText: res.statusText, headers });
+  }catch{
+    // fallback: retorna o original se der erro para não quebrar fluxo
+    return res;
+  }
+}
