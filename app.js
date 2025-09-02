@@ -186,18 +186,11 @@
   })();
   let deferredPrompt = null;
   function shouldShowInstallBanner(){
-    // Não mostrar se já instalado
+    // Mostrar sempre que não estiver instalado (sem janela de 1h)
     if(isInstalledContext()) return false;
-    // Modo forçado para testes
-    if(FORCE_INSTALL) return true;
-    // Guardar último acesso e considerar retorno após 1h
-    let snoozeAt = 0; try{ snoozeAt = Number(localStorage.getItem(LS_KEYS.snoozeAt)) || 0; }catch{}
-    const now = Date.now();
-    const oneHour = 60*60*1000;
-    if(!snoozeAt) return true; // primeira visita após carregar (sem snooze registrado)
-    return (now - snoozeAt) >= oneHour;
+    return true;
   }
-  function markSnooze(){ try{ localStorage.setItem(LS_KEYS.snoozeAt, String(Date.now())); }catch{} }
+  function markSnooze(){ /* snooze desativado */ }
   function showInstallBanner(){ if(!installBanner) return; installBanner.hidden = false; }
   function hideInstallBanner(){ if(!installBanner) return; installBanner.hidden = true; }
 
@@ -218,14 +211,14 @@
     if(deferredPrompt && deferredPrompt.prompt){ try{ deferredPrompt.prompt(); const choice = await deferredPrompt.userChoice; if(choice && choice.outcome === 'accepted'){ hideInstallBanner(); try{ localStorage.setItem(LS_KEYS.installed,'1'); }catch{} } else { markSnooze(); hideInstallBanner(); } }catch{ markSnooze(); hideInstallBanner(); } finally { deferredPrompt = null; } }
     else {
       // Sem beforeinstallprompt (iOS Safari / desktop não suportado): mostrar instruções em tooltip simples
-      markSnooze(); hideInstallBanner();
+  hideInstallBanner();
       try{
         const msg = 'Para instalar: use “Adicionar à Tela de Início” no menu do navegador.';
         ibInstall.title = msg; ibInstall.blur();
       }catch{}
     }
   }); }
-  if(ibDismiss){ ibDismiss.addEventListener('click', ()=>{ markSnooze(); hideInstallBanner(); try{ const n = Number(localStorage.getItem(LS_KEYS.declinedCount))||0; localStorage.setItem(LS_KEYS.declinedCount, String(n+1)); }catch{} }); }
+  if(ibDismiss){ ibDismiss.addEventListener('click', ()=>{ hideInstallBanner(); }); }
 
   // ===== UI Build ===========================================================
   const tiles = {};
