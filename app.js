@@ -1031,7 +1031,7 @@
       setText(`ts-${k}`, (!isStaleTr && tr?.timestamp) ? humanTime(tr.timestamp) : '—');
       // chart removed from card for cleaner view
     }
-    // Atualiza barra de humor do mercado (proporção verde x vermelho)
+    // Atualiza barra de humor do mercado (preço + sentimento de notícias)
     if(moodBar){
       let up=0, down=0;
       for(const c of COINS){
@@ -1043,7 +1043,18 @@
           if(st.dir === 'up') up++; else if(st.dir === 'down') down++;
         }
       }
-      const total = up + down; const greenRatio = total ? (up/total) : 0.5;
+      const total = up + down; let greenRatio = total ? (up/total) : 0.5;
+      // news sentiment (usar últimos 9 itens, se houver)
+      try{
+        const items = (NEWS && Array.isArray(NEWS.items)) ? NEWS.items.slice(-9) : [];
+        if(items.length){
+          const s = items.reduce((acc,it)=> acc + scoreSentiment(it.title||''), 0);
+          const avg = s / items.length; // -3..+3 -> -1..+1
+          const norm = Math.max(-1, Math.min(1, avg/3));
+          // mistura leve (20%)
+          greenRatio = Math.max(0, Math.min(1, greenRatio*0.8 + (norm>0? norm:0)*0.2));
+        }
+      }catch{}
       moodBar.style.setProperty('--mood', `${Math.round(greenRatio*100)}%`);
     }
     renderDiag();

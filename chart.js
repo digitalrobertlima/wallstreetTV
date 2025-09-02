@@ -30,6 +30,30 @@
   let series = []; // [ [ts, price], ... ]
   let lastPrice = NaN;
   let microPrints = [];// [{p, t}]
+  // Forecast helpers (AR(1) via regression on last N returns; fallback to EWMA)
+  function ar1Forecast(prices, steps=10){
+    const n = prices.length; if(n<12) return { path:[], conf:[] };
+    const rets = []; for(let i=1;i<n;i++){ const p0=prices[i-1], p1=prices[i]; if(Number.isFinite(p0) && p0>0 && Number.isFinite(p1)) rets.push((p1-p0)/p0); }
+    if(rets.length<8) return { path:[], conf:[] };
+    let num=0, den=0; for(let i=1;i<rets.length;i++){ num += rets[i-1]*rets[i]; den += rets[i-1]*rets[i-1]; }
+    const phi = den? (num/den) : 0; const lastRet = rets[rets.length-1]||0;
+    const lastP = prices[n-1]; const path=[lastP]; const conf=[0];
+    let sigma=0; // stdev of residuals
+    {
+      const preds=[]; for(let i=1;i<rets.length;i++){ preds.push(phi*rets[i-1]); }
+      const res=[]; for(let i=1;i<Math.min(preds.length, rets.length-1); i++){ res.push(rets[i] - preds[i-1]); }
+      const m = res.reduce((a,b)=>a+b,0)/Math.max(1,res.length);
+      const v = res.reduce((a,b)=> a+(b-m)*(b-m),0)/Math.max(1,res.length);
+      sigma = Math.sqrt(Math.max(1e-9, v));
+    }
+    let ret=lastRet;
+    for(let k=1;k<=steps;k++){
+      ret = phi*ret; const next = path[path.length-1]*(1+ret);
+      path.push(next);
+      conf.push(Math.sqrt(k)*sigma);
+    }
+    return { path, conf };
+  }
 
   async function getJSON(url){ const r = await fetch(url, { cache:'no-store' }); if(!r.ok) throw new Error('http ' + r.status); return r.json(); }
   function binSizeForRange(key){ switch(key){ case '1h': return 60_000; case '4h': return 5*60_000; default: return 15*60_000; } }
@@ -37,9 +61,36 @@
     const out = []; if(!ts || !prices || ts.length !== prices.length) return out; let cur=null;
     for(let i=0;i<ts.length;i++){ const t=ts[i], p=prices[i]; const bucket = Math.floor(t/binMs)*binMs; if(!cur || cur.t!==bucket){ if(cur) out.push(cur); cur={ t:bucket,o:p,h:p,l:p,c:p}; } else { if(p>cur.h) cur.h=p; if(p<cur.l) cur.l=p; cur.c=p; } }
     if(cur) out.push(cur); return out; }
-  function draw(){ if(!series.length) return; const ts=series.map(x=>x[0]); const ps=series.map(x=>x[1]); const bin=binSizeForRange(RG); const cands=makeCandles(ts,ps,bin); drawCandles(canvas,cands); }
+  function draw(){
+    if(!series.length) return;
+    const ts=series.map(x=>x[0]); const ps=series.map(x=>x[1]);
+    const bin=binSizeForRange(RG); const cands=makeCandles(ts,ps,bin);
+    drawCandles(canvas,cands);
+  }
 
   function drawCandles(el, candles){ const ctx=el.getContext('2d'); const dpr=window.devicePixelRatio||1; if(el._dpr!==dpr){ el._dpr=dpr; el.width=Math.floor(el.clientWidth*dpr); el.height=Math.floor(el.clientHeight*dpr);} const W=el.width,H=el.height; ctx.clearRect(0,0,W,H); if(!candles.length) return; const padX=10*dpr,padY=10*dpr; const n=candles.length; const min=Math.min(...candles.map(c=>c.l)), max=Math.max(...candles.map(c=>c.h)); const sx=i=> padX+(W-2*padX)*(i/(n-1)); const sy=v=> max===min?H/2:(H-padY)-((v-min)/(max-min))*(H-2*padY); ctx.save(); ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1; for(let i=1;i<=4;i++){ const y=(H/(4+1))*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); } ctx.restore(); const bodyW=Math.max(1*dpr,(W-2*padX)/Math.max(1,n-1)*0.6); for(let i=0;i<n;i++){ const c=candles[i]; const x=Math.round(sx(i)); const up=c.c>=c.o; const col=up?'rgba(0,200,83,.9)':'rgba(255,59,48,.9)'; const yH=sy(c.h),yL=sy(c.l),yO=sy(c.o),yC=sy(c.c); ctx.strokeStyle=col; ctx.lineWidth=Math.max(1,1*dpr); ctx.beginPath(); ctx.moveTo(x,yH); ctx.lineTo(x,yL); ctx.stroke(); const bx=Math.round(x-bodyW/2), by=Math.round(Math.min(yO,yC)), bh=Math.max(1,Math.abs(yC-yO)); ctx.fillStyle=col; ctx.fillRect(bx,by,Math.max(1,Math.floor(bodyW)),bh); }
+    // Forecast path on top
+    const lastPrices = candles.map(c=>c.c);
+    const { path, conf } = ar1Forecast(lastPrices, Math.max(6, Math.floor(n*0.15)));
+    if(path.length>1){
+      const lastIdx = n-1; const baseX = sx(lastIdx); const stepX = (W-2*padX)/Math.max(20, n);
+      ctx.save();
+      // confidence band
+      ctx.fillStyle = 'rgba(56,139,253,.15)';
+      ctx.beginPath();
+      for(let i=1;i<path.length;i++){
+        const x = baseX + i*stepX; const y = sy(path[i]*(1+conf[i]));
+        if(i===1) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      for(let i=path.length-1;i>=1;i--){ const x = baseX + i*stepX; const y = sy(path[i]*(1-conf[i])); ctx.lineTo(x,y); }
+      ctx.closePath(); ctx.fill();
+      // central line
+      ctx.strokeStyle = 'rgba(56,139,253,1)'; ctx.lineWidth = Math.max(1,1*dpr);
+      ctx.beginPath();
+      for(let i=1;i<path.length;i++){ const x = baseX + i*stepX; const y = sy(path[i]); if(i===1) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.stroke();
+      ctx.restore();
+    }
     const last=candles[n-1].c; const yLast=sy(last); ctx.save(); ctx.setLineDash([4*dpr,3*dpr]); ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,yLast); ctx.lineTo(W,yLast); ctx.stroke(); ctx.restore();
     el._candles={candles,padX,padY,W,H}; if(!el._tip){ el._tip=true; const move=(ev)=>{ const rect=el.getBoundingClientRect(); const clientX=(ev.touches?ev.touches[0].clientX:ev.clientX); const x=clientX-rect.left; const s=el._candles; if(!s) return; const n=s.candles.length; const rx=Math.max(s.padX,Math.min(s.W-s.padX,x)); const t=(rx-s.padX)/Math.max(1,(s.W-2*s.padX)); const idx=Math.max(0,Math.min(n-1,Math.round(t*(n-1)))); const c=s.candles[idx]; const base=s.candles[0]?.o??c.o; const pct=base?((c.c-base)/base*100):0; tipEl.textContent=`${fmtBRL.format(c.c)} • O ${fmtBRL.format(c.o)} • H ${fmtBRL.format(c.h)} • L ${fmtBRL.format(c.l)} • ${pct>=0?'+':''}${pct.toFixed(2)}%`; tipEl.hidden=false; const tipRect=tipEl.getBoundingClientRect(); const off=10; let tx=clientX+off, ty=(ev.touches?ev.touches[0].clientY:ev.clientY)+off; if((tx+tipRect.width)>window.innerWidth-6) tx=clientX-tipRect.width-off; if((ty+tipRect.height)>window.innerHeight-6) ty-=tipRect.height+off; tipEl.style.left=`${Math.max(6,tx)}px`; tipEl.style.top=`${Math.max(6,ty)}px`; }; const leave=()=>{ tipEl.hidden=true; }; el.addEventListener('mousemove',move); el.addEventListener('touchstart',move,{passive:true}); el.addEventListener('touchmove',move,{passive:true}); el.addEventListener('mouseleave',leave); el.addEventListener('touchend',leave); el.addEventListener('touchcancel',leave); }
   }
