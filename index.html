@@ -235,8 +235,10 @@
   // controle da fita: construir uma vez e atualizar em place (evita reset visual)
   let TAPE_START_TS = performance.now();
   let TAPE_BUILT = false;
+  let TAPE_SECONDS = 40; // duração corrente da animação da fita (s)
   const TAPE_ELEMS = []; // [{ pair, aPri, aSig, bPri, bSig }]
   let TAPE_RUN_WIDTH = 0; // largura fixa de uma corrida
+  let _tapeUpdateTimer = null;
   function buildTape(){
     if(!tapeA || !tapeB || TAPE_BUILT) return;
     tapeA.innerHTML = '';
@@ -515,40 +517,16 @@
   function render(){
     // fita: construir uma vez e atualizar em place
     buildTape();
-  const lastWidth = tapeA ? tapeA._lastWidth || 0 : 0;
-    for(const ref of TAPE_ELEMS){
-      const st = S[ref.pair];
-      const priceNum = choosePrice(st);
-      const price = Number.isFinite(priceNum) ? fmtBRL.format(priceNum) : '—';
-      const d = (st.prev && st.last) ? (st.last - st.prev) : 0;
-      const sigCls = d>0 ? 'up' : d<0 ? 'down' : '';
-      let blinkCls = 'flat';
-      const prevTape = TAPE_LAST[ref.pair];
-      if(Number.isFinite(priceNum) && Number.isFinite(prevTape)){
-        if(priceNum > prevTape) blinkCls = 'up';
-        else if(priceNum < prevTape) blinkCls = 'down';
-        else blinkCls = 'flat';
-      }
-      if(Number.isFinite(priceNum)) TAPE_LAST[ref.pair] = priceNum;
-      // atualizar preço + classes
-      ref.aPri.textContent = price; ref.bPri.textContent = price;
-      ref.aPri.className = `pri blink ${blinkCls}`;
-      ref.bPri.className = `pri blink ${blinkCls}`;
-      // atualizar seta/sinal
-      ref.aSig.className = `sig ${sigCls}`; ref.bSig.className = `sig ${sigCls}`;
-      const arrow = d>0 ? '▲' : d<0 ? '▼' : '•';
-      ref.aSig.textContent = arrow; ref.bSig.textContent = arrow;
-    }
-    if(tapeA){
-      const w = tapeA.scrollWidth;
-      // só reajusta se drift significativo (>16px)
-      if(Math.abs(w - TAPE_RUN_WIDTH) > 16){
-        TAPE_RUN_WIDTH = w;
-        tapeA.style.width = TAPE_RUN_WIDTH + 'px';
-        tapeB.style.width = TAPE_RUN_WIDTH + 'px';
-        tapeA._lastWidth = w;
-        tuneTickerSpeed(true);
-      }
+    // janela de proteção em máquinas lentas: se estamos nos últimos 280ms do loop, adie atualização da fita
+    const GUARD_MS = 280;
+    const now = performance.now();
+    const elapsed = (now - TAPE_START_TS) / 1000;
+    const remMs = (TAPE_SECONDS - (elapsed % TAPE_SECONDS)) * 1000;
+    const safeUpdate = () => { _tapeUpdateTimer = null; updateTape(); };
+    if(remMs < GUARD_MS){
+      if(!_tapeUpdateTimer){ _tapeUpdateTimer = setTimeout(safeUpdate, Math.max(30, remMs + 30)); }
+    } else {
+      updateTape();
     }
 
     // tiles
@@ -586,6 +564,42 @@
       setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
 
       drawSpark(`sp-${k}`, st.history);
+    }
+  }
+
+  function updateTape(){
+    if(!TAPE_BUILT) return;
+    for(const ref of TAPE_ELEMS){
+      const st = S[ref.pair];
+      const priceNum = choosePrice(st);
+      const price = Number.isFinite(priceNum) ? fmtBRL.format(priceNum) : '—';
+      const d = (st.prev && st.last) ? (st.last - st.prev) : 0;
+      const sigCls = d>0 ? 'up' : d<0 ? 'down' : '';
+      let blinkCls = 'flat';
+      const prevTape = TAPE_LAST[ref.pair];
+      if(Number.isFinite(priceNum) && Number.isFinite(prevTape)){
+        if(priceNum > prevTape) blinkCls = 'up';
+        else if(priceNum < prevTape) blinkCls = 'down';
+        else blinkCls = 'flat';
+      }
+      if(Number.isFinite(priceNum)) TAPE_LAST[ref.pair] = priceNum;
+      // atualizar preço + classes
+      ref.aPri.textContent = price; ref.bPri.textContent = price;
+      ref.aPri.className = `pri blink ${blinkCls}`; ref.bPri.className = `pri blink ${blinkCls}`;
+      // atualizar seta/sinal
+      ref.aSig.className = `sig ${sigCls}`; ref.bSig.className = `sig ${sigCls}`;
+      const arrow = d>0 ? '▲' : d<0 ? '▼' : '•';
+      ref.aSig.textContent = arrow; ref.bSig.textContent = arrow;
+    }
+    if(tapeA){
+      const w = tapeA.scrollWidth;
+      if(Math.abs(w - TAPE_RUN_WIDTH) > 16){
+        TAPE_RUN_WIDTH = w;
+        tapeA.style.width = TAPE_RUN_WIDTH + 'px';
+        tapeB.style.width = TAPE_RUN_WIDTH + 'px';
+        tapeA._lastWidth = w;
+        tuneTickerSpeed(true);
+      }
     }
   }
 
@@ -784,6 +798,7 @@
     // target ~110px/s for readability
     const pxPerSec = 110;
     const seconds = Math.max(20, Math.min(90, total / pxPerSec));
+  TAPE_SECONDS = seconds;
     const prev = getComputedStyle(tapeTrack).getPropertyValue('--tape-speed').trim();
     tapeTrack.style.setProperty('--tape-speed', seconds + 's');
     tapeTrack.style.setProperty('--tape-distance', total + 'px');
