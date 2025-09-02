@@ -3,7 +3,7 @@
   - Cache static shell for offline startup
   - SWR (stale-while-revalidate) leve para GET de APIs públicas, com TTL curto
 */
-const VERSION = 'v0.0.6';
+const VERSION = 'v0.0.7';
 const STATIC_CACHE = `wstv-static-${VERSION}`;
 const STATIC_ASSETS = [
   './', // index.html

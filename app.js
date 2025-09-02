@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = 'v0.0.6';
+  const APP_VERSION = 'v0.0.7';
   // ===== CONFIG ==============================================================
   const REFRESH_MS = 35_000; // 35 segundos
   const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
@@ -39,6 +39,12 @@
   const LAT = { samples:[], max:50, avg:0 };
   let ERR_COUNT = 0; let LAST_ERR = null;
   let PERSIST = false; // opt-in
+  // Preferências de áudio por ativo
+  let AUD_PREFS = {};
+  // Modo solo (apenas um ativo toca)
+  let AUD_SOLO = null;
+  try{ const raw = localStorage.getItem('wstv_aud_pairs'); if(raw){ const j = JSON.parse(raw); if(j && typeof j==='object') AUD_PREFS = j; } }catch{}
+  try{ const s = localStorage.getItem('wstv_aud_solo'); if(s){ AUD_SOLO = s || null; } }catch{}
   try{
     const saved = localStorage.getItem('wstv_diag');
     if(saved){ const j = JSON.parse(saved); if(j && j.persist) PERSIST = true; if(Array.isArray(j.samples)) { LAT.samples = j.samples.slice(-LAT.max); } }
@@ -56,6 +62,7 @@
     _histAt:null,
     dir:'flat', // direção de cor do blink no card (up/down/flat)
     _dispLast:null, // último preço exibido (após choosePrice)
+    aud: !!AUD_PREFS[c.pair] // som habilitado por ativo
   }])) ;
   let NET_ERR = false;
 
@@ -180,6 +187,8 @@
           <div class="ticker">${c.symbol}</div>
           <div class="pair">${c.label}</div>
           <span class="mini-dot" id="md-${c.pair}" aria-hidden="true"></span>
+          <button class="aud-btn" id="au-${c.pair}" aria-pressed="${S[c.pair].aud? 'true':'false'}" title="Ativar som para ${c.symbol}">${S[c.pair].aud ? '🔊' : '🔇'}</button>
+          <button class="solo-btn" id="so-${c.pair}" aria-pressed="${AUD_SOLO===c.pair? 'true':'false'}" title="Solo: ouvir apenas ${c.symbol}">🎧</button>
         </div>
         <div class="row row-tight align-end">
           <div class="price" id="p-${c.pair}" aria-live="polite" aria-atomic="true" aria-label="Preço atual">—</div>
@@ -209,7 +218,39 @@
     `;
     grid.appendChild(tile);
     tiles[c.pair] = tile;
+    // Listener do botão de áudio por ativo
+    const btn = tile.querySelector(`#au-${c.pair}`);
+    if(btn){
+      btn.addEventListener('click', ()=>{
+        const st = S[c.pair]; st.aud = !st.aud; btn.setAttribute('aria-pressed', String(st.aud)); btn.textContent = st.aud ? '🔊' : '🔇';
+        AUD_PREFS[c.pair] = st.aud ? true : false;
+        try{ localStorage.setItem('wstv_aud_pairs', JSON.stringify(AUD_PREFS)); }catch{}
+        // feedback sutil se som global estiver ligado
+        if(st.aud) blip('up', 0.1);
+      });
+    }
+    // Listener do botão solo
+    const soloBtn = tile.querySelector(`#so-${c.pair}`);
+    if(soloBtn){
+      if(AUD_SOLO===c.pair) tile.classList.add('solo');
+      soloBtn.addEventListener('click', ()=>{
+        if(AUD_SOLO === c.pair){
+          AUD_SOLO = null;
+          tile.classList.remove('solo');
+          soloBtn.setAttribute('aria-pressed','false');
+        } else {
+          // limpar marcação anterior
+          const prev = AUD_SOLO; AUD_SOLO = c.pair;
+          document.querySelectorAll('.tile.solo').forEach(t=> t.classList.remove('solo'));
+          soloBtn.setAttribute('aria-pressed','true');
+          tile.classList.add('solo');
+          if(prev){ const prevBtn = document.getElementById(`so-${prev}`); if(prevBtn){ prevBtn.setAttribute('aria-pressed','false'); } }
+        }
+        try{ localStorage.setItem('wstv_aud_solo', AUD_SOLO || ''); }catch{}
+      });
+    }
   });
+  function canPlay(pair){ if(!SOUND.enabled) return false; if(AUD_SOLO){ return AUD_SOLO === pair; } return !!S[pair].aud; }
 
   // ===== Fetchers com timeout ==============================================
   async function getJSON(url){
@@ -400,7 +441,7 @@
   // som de blip por mudança de preço exibido
   const dir = dispPrice > prevShown ? 'up' : 'down';
   const intensity = Math.min(3, Math.abs((dispPrice - prevShown) / Math.max(1, prevShown)) * 10);
-  blip(dir, intensity);
+  if(canPlay(k)) blip(dir, intensity);
   const md = document.getElementById(`md-${k}`);
   if(md){ md.classList.remove('ping'); void md.offsetWidth; md.classList.add('ping'); }
       }
