@@ -52,7 +52,14 @@ function fetchWithTimeout(req, ms = 8000) {
 }
 
 function isApi(url){
-  return url.origin.includes('bitpreco.com') || url.origin.includes('binance.com') || url.origin.includes('open-meteo.com');
+  return (
+    url.origin.includes('bitpreco.com') ||
+    url.origin.includes('binance.com') ||
+    url.origin.includes('open-meteo.com') ||
+    url.origin.includes('coingecko.com') ||
+    url.origin.includes('exchangerate.host') ||
+    url.origin.includes('bitstamp.net')
+  );
 }
 
 self.addEventListener('fetch', (event) => {

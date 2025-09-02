@@ -23,6 +23,18 @@
     ORDERBOOK:   (pair) => `https://api.bitpreco.com/${pair}/orderbook`,
     TRADES:      (pair) => `https://api.bitpreco.com/${pair}/trades`,
   };
+  // Tri-source: CoinGecko (preço), Bitstamp (USD: ticker/orderbook/trades), FX (USD->BRL)
+  const ENDPOINTS_CG = {
+    SIMPLE_PRICE: (ids, vs) => `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=${vs}&include_24hr_change=true`,
+  };
+  const ENDPOINTS_BS = {
+    TICKER:     (pairUSD) => `https://www.bitstamp.net/api/v2/ticker/${pairUSD}/`,
+    ORDERBOOK:  (pairUSD) => `https://www.bitstamp.net/api/v2/order_book/${pairUSD}/`,
+    TRADES:     (pairUSD, range='hour') => `https://www.bitstamp.net/api/v2/transactions/${pairUSD}/?time=${range}`,
+  };
+  const ENDPOINTS_FX = {
+    USDBRL: () => `https://api.exchangerate.host/latest?base=USD&symbols=BRL`,
+  };
   const ENDPOINTS_WEATHER = {
     CURRENT: (lat, lon) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=America%2FSao_Paulo`,
   };
@@ -58,12 +70,16 @@
     last:null, prev:null, high:null, low:null, vol:null, var:null,
     bid:null, ask:null, spread:null,
     trade:null, history:[], lastAt:null,
-    alt:{ last:null, bid:null, ask:null, at:null },
+    alt:{ last:null, bid:null, ask:null, at:null }, // Binance
+    cg:{ last:null, at:null },                      // CoinGecko
+    bs:{ last:null, bid:null, ask:null, at:null },  // Bitstamp (USD->BRL)
     _histAt:null,
     dir:'flat', // direção de cor do blink no card (up/down/flat)
     _dispLast:null, // último preço exibido (após choosePrice)
     aud: !!AUD_PREFS[c.pair] // som habilitado por ativo
   }])) ;
+  // FX cache (para conversões USD->BRL via BS/Kraken, etc.)
+  const FX = { usdtbrl:null, usdtbrlAt:0, usdbrl:null, usdbrlAt:0 };
   let NET_ERR = false;
 
   // ===== DOM ================================================================
@@ -368,6 +384,44 @@
     }
   }
 
+  // ===== FX helpers (com cache) ============================================
+  const FX_TTL = 10*60*1000; // 10 min
+  async function getUSDTBRL(){
+    const now = Date.now(); if(FX.usdtbrl && (now - FX.usdtbrlAt) < FX_TTL) return FX.usdtbrl;
+    // Fonte 1: Binance USDTBRL
+    try{
+      const j = await getJSON(ENDPOINTS_BINANCE.PRICE('USDTBRL')); const v = Number(j?.price);
+      if(Number.isFinite(v)){ FX.usdtbrl=v; FX.usdtbrlAt=now; return v; }
+    }catch{}
+    // Fonte 2: BitPreço USDT-BRL ticker
+    try{
+      const j = await getJSON(ENDPOINTS.TICKER('usdt-brl')); const v = Number(j?.last ?? j?.price);
+      if(Number.isFinite(v)){ FX.usdtbrl=v; FX.usdtbrlAt=now; return v; }
+    }catch{}
+    // Fonte 3: USD->BRL (assumindo USDT≈USD)
+    const usdbrl = await getUSDBRL(); if(Number.isFinite(usdbrl)){ FX.usdtbrl=usdbrl; FX.usdtbrlAt=Date.now(); return usdbrl; }
+    return NaN;
+  }
+  async function getUSDBRL(){
+    const now = Date.now(); if(FX.usdbrl && (now - FX.usdbrlAt) < FX_TTL) return FX.usdbrl;
+    // Fonte 1: Exchangerate.host
+    try{
+      const j = await getJSON(ENDPOINTS_FX.USDBRL()); const v = Number(j?.rates?.BRL);
+      if(Number.isFinite(v)){ FX.usdbrl=v; FX.usdbrlAt=now; return v; }
+    }catch{}
+    // Fonte 2: derivado de USDTBRL
+    try{
+      const usdt = await getJSON(ENDPOINTS_BINANCE.PRICE('USDTBRL')); const v = Number(usdt?.price);
+      if(Number.isFinite(v)){ FX.usdbrl=v; FX.usdbrlAt=Date.now(); return v; }
+    }catch{}
+    // Fonte 3: BitPreço USDT-BRL
+    try{
+      const j = await getJSON(ENDPOINTS.TICKER('usdt-brl')); const v = Number(j?.last ?? j?.price);
+      if(Number.isFinite(v)){ FX.usdbrl=v; FX.usdbrlAt=Date.now(); return v; }
+    }catch{}
+    return NaN;
+  }
+
   // ===== Stale-While-Revalidate de APIs (leve no SW-like) ====================
   // Para BitPreço tickers, guardamos o último bom em memória; se falhar, usamos o alt
   // Para uma experiência melhor, opcionalmente poderíamos usar IndexedDB; mantemos simples.
@@ -398,6 +452,7 @@
     st.vol  = Number(t.vol  ?? t.volume ?? NaN);
     st.var  = (t.var !== undefined) ? Number(t.var) : null;
     st.lastAt = Date.now();
+  st.statAt = st.lastAt;
     if(Number.isFinite(st.last) && st.last > 0){ maybePushHistory(st, st.last); }
   }
 
@@ -422,18 +477,44 @@
           const bestAsk = ob.asks && ob.asks.length ? ob.asks[0] : null;
           const bid = bestBid ? Number(bestBid.price ?? bestBid[1] ?? bestBid) : null;
           const ask = bestAsk ? Number(bestAsk.price ?? bestAsk[1] ?? bestAsk) : null;
-          S[pair].bid = bid; S[pair].ask = ask; S[pair].spread = (bid && ask) ? (ask - bid) : null;
+          S[pair].bid = bid; S[pair].ask = ask; S[pair].spread = (bid && ask) ? (ask - bid) : null; S[pair]._l1At = Date.now();
         }catch(e){ console.error('orderbook falhou', pair, e); NET_ERR = true; }
-        if(shouldFetchTrades){
-          try{
-            const tr = await getJSON(ENDPOINTS.TRADES(pair));
-            const last = Array.isArray(tr) && tr.length ? tr.reduce((a,b)=> new Date(b.timestamp) > new Date(a.timestamp) ? b : a) : null;
-            S[pair].trade = last || null;
-          }catch(e){ console.error('trades falhou', pair, e); NET_ERR = true; }
-        }
+        if(shouldFetchTrades){ try{ S[pair].trade = await fetchTradeTri(pair); }catch(e){ console.error('trades tri falhou', pair, e); NET_ERR = true; } }
       }));
       await sleep(200);
     }
+  }
+
+  // Tri-source trades: BitPreço -> Binance -> Bitstamp(USD->BRL)
+  async function fetchTradeTri(pair){
+    // 1) BitPreço
+    try{
+      const tr = await getJSON(ENDPOINTS.TRADES(pair));
+      const last = Array.isArray(tr) && tr.length ? tr.reduce((a,b)=> new Date(b.timestamp) > new Date(a.timestamp) ? b : a) : null;
+      if(last) return last;
+    }catch{}
+    // 2) Binance (sem lado explícito)
+    try{
+      const sym = BINANCE_SYMBOLS[pair]; if(sym){
+        const arr = await getJSON(`https://api.binance.com/api/v3/trades?symbol=${sym}&limit=1`);
+        const t = Array.isArray(arr) && arr[0] ? arr[0] : null;
+        if(t){ return { type:'', amount: Number(t.qty), price: Number(t.price), timestamp: t.time } }
+      }
+    }catch{}
+    // 3) Bitstamp (USD -> BRL)
+    try{
+      const sym = BS_MAP[pair]; if(sym){
+        const usdbrl = await getUSDBRL(); if(!Number.isFinite(usdbrl)) throw new Error('no FX');
+        const arr = await getJSON(ENDPOINTS_BS.TRADES(sym, 'hour'));
+        const t = Array.isArray(arr) && arr[0] ? arr[0] : null;
+        if(t){
+          const priceBRL = Number(t.price) * usdbrl; const amt = Number(t.amount);
+          const ts = (t.date ? Number(t.date)*1000 : Date.now());
+          return { type: t.type==="0"? 'BUY' : t.type==="1"? 'SELL' : '', amount: amt, price: priceBRL, timestamp: ts };
+        }
+      }
+    }catch{}
+    return null;
   }
 
   function computeTradesEvery(baseMs){
@@ -444,6 +525,7 @@
   // ===== Binance leve ========================================================
   const BINANCE_SYMBOLS = Object.fromEntries(COINS.map(c=>{ const s = c.pair.toUpperCase().replace(/-/g,''); return [c.pair, s]; }));
   const BINANCE_AUX = { DASH_USDT: 'DASHUSDT', USDT_BRL: 'USDTBRL' };
+  ENDPOINTS_BINANCE.TICKER_24HR = (symbol) => `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`;
 
   async function fetchBinanceLight(){
     const BATCH = 4;
@@ -493,6 +575,117 @@
     }
   }
 
+  // ===== 24h stats (tri-source) ============================================
+  const B24_EVERY = 6; // ~3.5min
+  async function fetchBinance24h(){
+    const BATCH = 4;
+    for(let i=0;i<COINS.length;i+=BATCH){
+      const batch = COINS.slice(i, i+BATCH);
+      await Promise.all(batch.map(async c => {
+        const sym = BINANCE_SYMBOLS[c.pair]; if(!sym) return;
+        try{
+          const r = await getJSON(ENDPOINTS_BINANCE.TICKER_24HR(sym));
+          const st = S[c.pair];
+          st.bin24 = st.bin24 || {};
+          st.bin24.high = Number(r?.highPrice ?? NaN);
+          st.bin24.low  = Number(r?.lowPrice ?? NaN);
+          st.bin24.vol  = Number(r?.volume ?? NaN);
+          st.bin24.at   = Date.now();
+        }catch{}
+      }));
+      await sleep(160);
+    }
+  }
+
+  async function fetchCoinGeckoMarkets(){
+    const ids = Object.values(CG_IDS).join(',');
+    try{
+      // coins/markets exige vs_currency e ids; page única cobre nossos 10 ativos
+      const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids}&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h`;
+      const data = await getJSON(url);
+      const now = Date.now();
+      for(const rec of (Array.isArray(data)? data : [])){
+        const id = rec?.id; if(!id) continue;
+        const pair = Object.keys(CG_IDS).find(k => CG_IDS[k]===id); if(!pair) continue;
+        const st = S[pair]; st.cg24 = st.cg24 || {};
+        st.cg24.high = Number(rec?.high_24h ?? NaN);
+        st.cg24.low  = Number(rec?.low_24h ?? NaN);
+        st.cg24.vol  = Number(rec?.total_volume ?? NaN);
+        st.cg24.at   = now;
+      }
+    }catch(e){ recordError(e); }
+  }
+
+  function chooseStats(st){
+    const now = Date.now(); const freshMs = 4 * REFRESH_MS;
+    // fontes: bitpreco (st.high/low/vol + st.statAt), binance (st.bin24), cg (st.cg24)
+    const cand = [];
+    if(Number.isFinite(st.high) || Number.isFinite(st.low) || Number.isFinite(st.vol)) cand.push({src:'bp', at: st.statAt||0, hi:st.high, lo:st.low, vo:st.vol});
+    if(st.bin24 && st.bin24.at && (now - st.bin24.at) < (6*REFRESH_MS)) cand.push({src:'bn', at: st.bin24.at, hi:st.bin24.high, lo:st.bin24.low, vo:st.bin24.vol});
+    if(st.cg24 && st.cg24.at && (now - st.cg24.at) < (10*REFRESH_MS)) cand.push({src:'cg', at: st.cg24.at, hi:st.cg24.high, lo:st.cg24.low, vo:st.cg24.vol});
+    if(!cand.length) return { hi: st.high, lo: st.low, vo: st.vol };
+    cand.sort((a,b)=> b.at - a.at);
+    const best = cand[0];
+    return { hi: best.hi, lo: best.lo, vo: best.vo };
+  }
+
+  // ===== CoinGecko (preço BRL) =============================================
+  const CG_IDS = {
+    'btc-brl':'bitcoin', 'eth-brl':'ethereum', 'bnb-brl':'binancecoin', 'dash-brl':'dash',
+    'usdt-brl':'tether', 'usdc-brl':'usd-coin', 'sol-brl':'solana', 'ada-brl':'cardano',
+    'xrp-brl':'ripple', 'doge-brl':'dogecoin'
+  };
+  const CG_EVERY = 3; // a cada 3 ciclos (~105s)
+  async function fetchCoinGeckoBatch(){
+    const ids = Object.values(CG_IDS).join(',');
+    try{
+      const data = await getJSON(ENDPOINTS_CG.SIMPLE_PRICE(ids, 'brl,usd'));
+      const now = Date.now();
+      for(const c of COINS){
+        const id = CG_IDS[c.pair]; if(!id) continue; const rec = data?.[id];
+        const lastBRL = Number(rec?.brl ?? NaN);
+        if(Number.isFinite(lastBRL)){
+          const st = S[c.pair]; st.cg.last = lastBRL; st.cg.at = now; maybePushHistory(st, lastBRL);
+        }
+      }
+    }catch(e){ recordError(e); }
+  }
+
+  // ===== Bitstamp leve (USD -> BRL) ========================================
+  const BS_MAP = {
+    'btc-brl':'btcusd', 'eth-brl':'ethusd', 'xrp-brl':'xrpusd', 'ada-brl':'adausd',
+    'sol-brl':'solusd', 'doge-brl':'dogeusd', 'dash-brl':'dashusd'
+    // Observação: Bitstamp pode não ter todos os pares; erros serão ignorados
+  };
+  const BS_EVERY = 6; // ~3.5min
+  async function fetchBitstampLight(){
+    const usdbrl = await getUSDBRL(); if(!Number.isFinite(usdbrl)) return; // sem FX confiável, skip
+    const BATCH = 3;
+    for(let i=0;i<COINS.length;i+=BATCH){
+      const batch = COINS.slice(i, i+BATCH);
+      await Promise.all(batch.map(async c => {
+        const sym = BS_MAP[c.pair]; if(!sym) return;
+        try{
+          const tk = await getJSON(ENDPOINTS_BS.TICKER(sym));
+          const lastUSD = Number(tk?.last ?? tk?.last_price ?? NaN);
+          if(Number.isFinite(lastUSD)){
+            const lastBRL = lastUSD * usdbrl; const st = S[c.pair]; st.bs.last = lastBRL; st.bs.at = Date.now(); maybePushHistory(st, lastBRL);
+          }
+        }catch{}
+        try{
+          const ob = await getJSON(ENDPOINTS_BS.ORDERBOOK(sym));
+          const bestBid = ob?.bids && ob.bids[0] ? Number(ob.bids[0][0]) : NaN;
+          const bestAsk = ob?.asks && ob.asks[0] ? Number(ob.asks[0][0]) : NaN;
+          const st = S[c.pair];
+          if(Number.isFinite(bestBid)) st.bs.bid = bestBid * usdbrl;
+          if(Number.isFinite(bestAsk)) st.bs.ask = bestAsk * usdbrl;
+          if(Number.isFinite(st.bs.bid) && Number.isFinite(st.bs.ask)) st.bs.at = Date.now();
+        }catch{}
+      }));
+      await sleep(180);
+    }
+  }
+
   // ===== Render ==============================================================
   function render(){
     buildTape();
@@ -500,7 +693,7 @@
     if(remMs < GUARD_MS){ if(!_tapeUpdateTimer){ _tapeUpdateTimer = setTimeout(safeUpdate, Math.max(30, remMs + 30)); } } else { updateTape(); }
     for(const c of COINS){
       const k = c.pair, st = S[k];
-      const dispPrice = choosePrice(st);
+  const dispPrice = choosePrice(st);
       // Atualiza direção de cor com base no preço exibido (sticky até mudar)
       const prevShown = st._dispLast;
       if(Number.isFinite(dispPrice)){
@@ -537,11 +730,11 @@
         const delta = st.last - st.prev; const perc = st.prev ? (delta/st.prev*100) : 0; deltaStr = `${delta>=0?'+':''}${perc.toFixed(2)}%`; cls = delta>0 ? 'up' : delta<0 ? 'down' : '';
       }
       setDelta(`d-${k}`, deltaStr, cls);
-      setText(`hi-${k}`, Number.isFinite(st.high) ? fmtBRL.format(st.high) : '—');
-      setText(`lo-${k}`, Number.isFinite(st.low)  ? fmtBRL.format(st.low)  : '—');
-      setText(`vo-${k}`, Number.isFinite(st.vol)  ? fmtNum.format(st.vol)  : '—');
-      const bidDisp = Number.isFinite(st.bid) ? st.bid : (Number.isFinite(st.alt.bid) ? st.alt.bid : null);
-      const askDisp = Number.isFinite(st.ask) ? st.ask : (Number.isFinite(st.alt.ask) ? st.alt.ask : null);
+  const stats = chooseStats(st);
+  setText(`hi-${k}`, Number.isFinite(stats.hi) ? fmtBRL.format(stats.hi) : '—');
+  setText(`lo-${k}`, Number.isFinite(stats.lo) ? fmtBRL.format(stats.lo) : '—');
+  setText(`vo-${k}`, Number.isFinite(stats.vo) ? fmtNum.format(stats.vo) : '—');
+  const { bidDisp, askDisp } = chooseL1(st);
       const sprDisp = (Number.isFinite(bidDisp) && Number.isFinite(askDisp)) ? (askDisp - bidDisp) : (Number.isFinite(st.spread) ? st.spread : null);
       setText(`bid-${k}`, Number.isFinite(bidDisp) ? fmtBRL.format(bidDisp) : '—');
       setText(`ask-${k}`, Number.isFinite(askDisp) ? fmtBRL.format(askDisp) : '—');
@@ -599,7 +792,37 @@
 
   function setPrice(id, value){ const el = document.getElementById(id); if(!el) return; const parent = el.parentElement; if(!parent){ el.textContent = '—'; return; } if(!Number.isFinite(value)){ el.textContent = '—'; return; } el.style.fontSize = ''; el.textContent = fmtBRL.format(value); fitToRow(el, parent); }
   function fitToRow(el, parent){ const row = parent; const siblings = Array.from(row.children).filter(n=> n !== el); const deltaEl = siblings.find(n=> n.classList.contains('delta')); const gap = 10; const deltaW = deltaEl ? deltaEl.getBoundingClientRect().width : 0; const maxW = Math.max(0, row.clientWidth - deltaW - gap - 2); if(el.scrollWidth <= maxW) return; let fs = parseFloat(getComputedStyle(el).fontSize) || 32; let guard = 0; while(el.scrollWidth > maxW && fs > 8 && guard < 20){ fs = Math.max(8, Math.floor(fs * 0.9)); el.style.fontSize = fs + 'px'; guard++; } }
-  function choosePrice(st){ const now = Date.now(); const freshMs = 2 * REFRESH_MS; if(Number.isFinite(st.last) && st.last > 0 && st.lastAt && (now - st.lastAt) < freshMs) return st.last; if(Number.isFinite(st.alt.last) && st.alt.at && (now - st.alt.at) < freshMs) return st.alt.last; return Number.isFinite(st.last) && st.last > 0 ? st.last : (Number.isFinite(st.alt.last) ? st.alt.last : NaN); }
+  function choosePrice(st){
+    const now = Date.now(); const freshMs = 2 * REFRESH_MS;
+    const cands = [];
+    if(Number.isFinite(st.last) && st.last>0 && st.lastAt && (now - st.lastAt) < freshMs) cands.push(st.last);
+    if(Number.isFinite(st.alt.last) && st.alt.at && (now - st.alt.at) < freshMs) cands.push(st.alt.last);
+    if(Number.isFinite(st.cg?.last) && st.cg.at && (now - st.cg.at) < freshMs) cands.push(st.cg.last);
+    if(Number.isFinite(st.bs?.last) && st.bs.at && (now - st.bs.at) < freshMs) cands.push(st.bs.last);
+    if(cands.length === 0){
+      // fallback: o que tiver, priorizando BitPreço > Binance > CG > BS
+      if(Number.isFinite(st.last) && st.last>0) return st.last;
+      if(Number.isFinite(st.alt.last)) return st.alt.last;
+      if(Number.isFinite(st.cg?.last)) return st.cg.last;
+      if(Number.isFinite(st.bs?.last)) return st.bs.last;
+      return NaN;
+    }
+    // retornar mediana para robustez
+    cands.sort((a,b)=>a-b); const mid = Math.floor(cands.length/2);
+    return cands.length%2 ? cands[mid] : (cands[mid-1]+cands[mid])/2;
+  }
+  function chooseL1(st){
+    const now = Date.now(); const freshMs = 2 * REFRESH_MS;
+    const bids = [], asks = [];
+    if(Number.isFinite(st.bid) && st.lastAt && (now - st.lastAt) < freshMs) bids.push(st.bid);
+    if(Number.isFinite(st.ask) && st.lastAt && (now - st.lastAt) < freshMs) asks.push(st.ask);
+    if(Number.isFinite(st.alt.bid) && st.alt.at && (now - st.alt.at) < freshMs) bids.push(st.alt.bid);
+    if(Number.isFinite(st.alt.ask) && st.alt.at && (now - st.alt.at) < freshMs) asks.push(st.alt.ask);
+    if(Number.isFinite(st.bs.bid) && st.bs.at && (now - st.bs.at) < freshMs) bids.push(st.bs.bid);
+    if(Number.isFinite(st.bs.ask) && st.bs.at && (now - st.bs.at) < freshMs) asks.push(st.bs.ask);
+    const med = (arr)=>{ if(!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); const m=Math.floor(s.length/2); return s.length%2? s[m] : (s[m-1]+s[m])/2; };
+    return { bidDisp: med(bids), askDisp: med(asks) };
+  }
   function setText(id, txt){ const el = document.getElementById(id); if(el) el.textContent = txt; }
   function setDelta(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent=txt; el.className = `delta ${cls}`; }
   function setPill(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent = txt; el.className = `pill ${cls}`; }
@@ -672,7 +895,21 @@
   // ===== Loop ================================================================
   async function cycle(){ NET_ERR = false; await fetchTickers(); await fetchOrderbookAndTrades(); render(); lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); setNet(!NET_ERR); cycleCount++; }
   let _cycleTimer = null; let _isRunning = false; function nextDelay(){ return document.hidden ? REFRESH_HIDDEN_MS : REFRESH_MS; } function scheduleNext(ms){ if(_cycleTimer) clearTimeout(_cycleTimer); _cycleTimer = setTimeout(runCycle, ms); _nextTickAt = Date.now() + ms; }
-  async function runCycle(){ if(_isRunning){ scheduleNext(250); return; } _isRunning = true; try{ await cycle(); } catch(e){ console.error('cycle erro:', e); } finally{ try{ if((cycleCount % 2) === 1){ await fetchBinanceLight(); render(); } }catch(e){ console.error('binance erro:', e); } _isRunning = false; scheduleNext(nextDelay()); } }
+  async function runCycle(){
+    if(_isRunning){ scheduleNext(250); return; }
+    _isRunning = true;
+    try{ await cycle(); }
+    catch(e){ console.error('cycle erro:', e); }
+    finally{
+      try{
+        if((cycleCount % 2) === 1){ await fetchBinanceLight(); }
+        if((cycleCount % CG_EVERY) === 0){ await fetchCoinGeckoBatch(); }
+        if((cycleCount % BS_EVERY) === 0){ await fetchBitstampLight(); }
+        render();
+      }catch(e){ console.error('aux fetch erro:', e); }
+      _isRunning = false; scheduleNext(nextDelay());
+    }
+  }
   runCycle(); requestAnimationFrame(()=>{ TAPE_START_TS = performance.now(); tuneTickerSpeed(true); });
   // live countdown to next refresh
   let _nextTickAt = Date.now() + nextDelay();
