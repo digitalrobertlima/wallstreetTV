@@ -50,6 +50,32 @@
   const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
   const TIMEOUT_MS = 9000; // timeout padrão de fetch
   const STALE_TRADE_MS = 3 * REFRESH_MS; // após isso, considerar última negociação desatualizada
+  // ===== Simple AI helpers (local-only) =====================================
+  const SENTI = {
+    pos: ['alta','subida','ganho','otimista','otimismo','recorde','acelera','cresce','bull','rali','rally','expande','positivo','forte','avança','saltou','salta','dispara'],
+    neg: ['queda','cai','perda','pessimista','pessimismo','crise','desacelera','despenca','bear','colapso','recua','negativo','fraco','recuo','derrete','desaba','despencou']
+  };
+  function scoreSentiment(text){
+    try{
+      if(!text) return 0;
+      const t = String(text).toLowerCase(); let s=0;
+      for(const w of SENTI.pos) if(t.includes(w)) s++;
+      for(const w of SENTI.neg) if(t.includes(w)) s--;
+      return Math.max(-3, Math.min(3, s));
+    }catch{ return 0; }
+  }
+  function zscore(arr){
+    try{
+      const xs = arr.filter(Number.isFinite);
+      const n = xs.length; if(n<3) return 0;
+      const mean = xs.reduce((a,b)=>a+b,0)/n;
+      const varr = xs.reduce((a,b)=> a + (b-mean)*(b-mean), 0)/n;
+      const sd = Math.sqrt(varr) || 1;
+      const last = xs[xs.length-1];
+      return (last - mean)/sd;
+    }catch{ return 0; }
+  }
+  function pct(a,b){ if(!Number.isFinite(a) || !Number.isFinite(b) || b===0) return NaN; return (a-b)/b*100; }
 
   // ===== Preconnect condicional (economia móvel) ============================
   const PRECONNECT = { last:new Map(), cooldownMs: 5*60*1000 };
@@ -116,7 +142,9 @@
     _histAt:null,
     dir:'flat', // direção de cor do blink no card (up/down/flat)
     _dispLast:null, // último preço exibido (após choosePrice)
-    aud: !!AUD_PREFS[c.pair] // som habilitado por ativo
+    aud: !!AUD_PREFS[c.pair],
+    pd:null,
+    _zArr:[]
   }])) ;
   // FX cache (para conversões USD->BRL via BS/Kraken, etc.)
   const FX = { usdtbrl:null, usdtbrlAt:0, usdbrl:null, usdbrlAt:0 };
@@ -373,6 +401,10 @@
         <div class="kpi"><div class="label">L1 BID</div><div class="value" id="bid-${c.pair}">—</div></div>
         <div class="kpi"><div class="label">L1 ASK</div><div class="value" id="ask-${c.pair}">—</div></div>
         <div class="kpi"><div class="label">Spread</div><div class="value" id="spu-${c.pair}">—</div></div>
+      </div>
+      <div class="pd-line">
+        <div class="label">Prêmio/Desconto (BP vs alt)</div>
+        <div class="value" id="pd-${c.pair}">—</div>
       </div>
       <div class="trade" id="tr-${c.pair}">
         <span class="badge">Última negociação</span>
@@ -902,7 +934,14 @@
             i1S.textContent = '—'; i1T.textContent = '—';
             i2S.textContent = '—'; i2T.textContent = '—';
           } else {
-            const set = (S,T,it) => { if(!it){ S.textContent='—'; T.textContent='—'; } else { S.textContent=it.source; T.textContent=it.title; } };
+            const set = (S,T,it) => {
+              if(!it){ S.textContent='—'; T.textContent='—'; T.className = 'title'; }
+              else {
+                S.textContent=it.source; T.textContent=it.title;
+                const sc = scoreSentiment(it.title);
+                T.className = 'title ' + (sc>0? 'sent-up' : sc<0? 'sent-down' : '');
+              }
+            };
             set(ptS, ptT, pt);
             set(i1S, i1T, int1);
             set(i2S, i2T, int2);
@@ -910,18 +949,25 @@
         }
         continue; // skip normal market render while in news mode
       }
+      // premium/discount
       const dispPrice = choosePrice(st);
-      // Atualiza direção de cor com base no preço exibido (sticky até mudar)
-      const prevShown = st._dispLast;
-      if(Number.isFinite(dispPrice)){
-        if(Number.isFinite(prevShown)){
-          if(dispPrice > prevShown) st.dir = 'up';
-          else if(dispPrice < prevShown) st.dir = 'down';
-          // se igual, mantém cor anterior
-        }
-        st._dispLast = dispPrice;
-      }
+      const bp = Number.isFinite(st.last) ? st.last : NaN;
+      const altCand = Number.isFinite(st.alt?.last) ? st.alt.last : Number.isFinite(st.cg?.last) ? st.cg.last : Number.isFinite(st.bs?.last) ? st.bs.last : NaN;
+      const pd = (Number.isFinite(bp) && Number.isFinite(altCand)) ? pct(bp, altCand) : null;
+      st.pd = Number.isFinite(pd) ? pd : null;
       setPrice(`p-${k}`, dispPrice);
+      const pdEl = document.getElementById(`pd-${k}`);
+      if(pdEl){ pdEl.textContent = (st.pd==null) ? '—' : `${st.pd>=0?'+':''}${st.pd.toFixed(2)}%`; pdEl.style.color = st.pd==null? '' : (st.pd>=0? 'var(--up)':'var(--down)'); }
+      // z-score swing alert
+      if(Number.isFinite(dispPrice)){
+        const buf = st._zArr; buf.push(dispPrice); if(buf.length>40) buf.shift();
+        const z = zscore(buf);
+        const tile = tiles[k];
+        if(tile){
+          tile.classList.remove('swing-up','swing-down');
+          if(Math.abs(z) > 2){ tile.classList.add(z>0? 'swing-up':'swing-down'); if(canPlay(k)) blip(z>0?'up':'down', Math.min(3, Math.abs(z))); }
+        }
+      }
       // continuous blink on main price using sticky direction
       const priceEl = document.getElementById(`p-${k}`);
       if(priceEl){
@@ -1051,6 +1097,7 @@
     while(el.scrollWidth > maxW && fs > 12 && guard < 20){
       fs = Math.max(12, Math.floor(fs * 0.9));
       el.style.fontSize = fs + 'px';
+
       guard++;
     }
   }

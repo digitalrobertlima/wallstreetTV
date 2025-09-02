@@ -105,6 +105,9 @@ button:hover{background:#232b3a}
 .kpi .value{font-weight:700; font-size:14px; margin-top:2px; min-width:0; overflow:hidden; text-overflow:ellipsis}
 .book{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px}
 .book .value{min-width:0; overflow:hidden; text-overflow:ellipsis}
+.pd-line{display:flex; align-items:center; justify-content:space-between; gap:8px; background:#0b0f16; border-radius:12px; padding:8px 10px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06)}
+.pd-line .label{color:var(--muted); font-size:12px}
+.pd-line .value{font-weight:700; font-size:14px}
 .badge{font-size:11px; padding:4px 8px; border-radius:999px; background:#0d121a; color:var(--muted);}
 canvas.spark{width:100%; height:56px; border-radius:10px; background:#0b0f16; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06)}
 /* Chart tooltip */
@@ -128,6 +131,8 @@ canvas.spark{width:100%; height:56px; border-radius:10px; background:#0b0f16; bo
 .headline .hcol{min-width:0}
 .headline .source{font-size:12px; color:var(--muted)}
 .headline .title{margin-top:6px; font-weight:800}
+.headline .title.sent-up{color:var(--up)}
+.headline .title.sent-down{color:var(--down)}
 .news-controls{display:flex; justify-content:flex-end; margin-top:8px}
 /* stacked layout always, no grid breakpoints needed */
 /* tile footer */
