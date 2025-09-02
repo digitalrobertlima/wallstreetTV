@@ -118,24 +118,29 @@
   if(soundBtn){ soundBtn.addEventListener('click', async ()=>{ await ensureAudio(); toggleSound(); }); }
 
   // Mostrar badge PWA somente quando de fato em modo instalado/standalone (robusto)
-  function getDisplayMode(){
+  function isInstalledContext(){
     try{
-      if(('standalone' in navigator) && navigator.standalone === true) return 'standalone';
-      if(document.referrer && document.referrer.startsWith('android-app://')) return 'twa';
-      if(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return 'standalone';
-      if(window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return 'standalone';
-      return 'browser';
-    }catch{ return 'browser'; }
+      // iOS Safari (Add to Home Screen)
+      if(('standalone' in navigator) && navigator.standalone === true) return true;
+      // Trusted Web Activity (Android Chrome via referrer)
+      if(document.referrer && document.referrer.startsWith('android-app://')) return true;
+      if(!window.matchMedia) return false;
+      const mStandalone = window.matchMedia('(display-mode: standalone)');
+      const mBrowser = window.matchMedia('(display-mode: browser)');
+      // Consider installed only if standalone matches and browser does not
+      if(mStandalone && mStandalone.matches){ if(mBrowser && mBrowser.matches) return false; return true; }
+      return false;
+    }catch{ return false; }
   }
-  function updatePwaBadge(){ if(!pwaBadge) return; const mode = getDisplayMode(); pwaBadge.hidden = !(mode === 'standalone' || mode === 'twa'); }
+  function updatePwaBadge(){ if(!pwaBadge) return; pwaBadge.hidden = !isInstalledContext(); }
   updatePwaBadge();
   // reagir a mudanças de display-mode
   try{
-    const m1 = window.matchMedia('(display-mode: standalone)');
-    const m2 = window.matchMedia('(display-mode: fullscreen)');
+    const mStandalone = window.matchMedia('(display-mode: standalone)');
+    const mBrowser = window.matchMedia('(display-mode: browser)');
     const onChange = ()=> updatePwaBadge();
-    if(m1 && m1.addEventListener) m1.addEventListener('change', onChange);
-    if(m2 && m2.addEventListener) m2.addEventListener('change', onChange);
+    if(mStandalone && mStandalone.addEventListener) mStandalone.addEventListener('change', onChange);
+    if(mBrowser && mBrowser.addEventListener) mBrowser.addEventListener('change', onChange);
   }catch{}
   window.addEventListener('visibilitychange', updatePwaBadge);
   window.addEventListener('resize', updatePwaBadge);
