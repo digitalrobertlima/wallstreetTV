@@ -119,7 +119,7 @@
     .sig.up{color:var(--up)}
     .sig.down{color:var(--down)}
     .sep{opacity:.5; color:var(--muted)}
-    @keyframes tape-scroll{100%{transform:translateX(-50%)}}
+  @keyframes tape-scroll{to{transform:translateX(calc(-1 * var(--tape-distance, 0px)))}}
     @media (min-height: 800px){ canvas.spark{height:72px} }
   </style>
 </head>
@@ -510,6 +510,7 @@
   function render(){
     // fita: construir uma vez e atualizar em place
     buildTape();
+  const lastWidth = tapeA ? tapeA._lastWidth || 0 : 0;
     for(const ref of TAPE_ELEMS){
       const st = S[ref.pair];
       const priceNum = choosePrice(st);
@@ -532,6 +533,10 @@
       ref.aSig.className = `sig ${sigCls}`; ref.bSig.className = `sig ${sigCls}`;
       const arrow = d>0 ? '▲' : d<0 ? '▼' : '•';
       ref.aSig.textContent = arrow; ref.bSig.textContent = arrow;
+    }
+    if(tapeA){
+      const w = tapeA.scrollWidth;
+      if(w !== lastWidth){ tapeA._lastWidth = w; tuneTickerSpeed(true); }
     }
 
     // tiles
@@ -753,22 +758,33 @@
   });
 
   // ===== TICKER SPEED ADAPTATION ===========================================
+  let _tapePauseTimer = null;
+  function pauseTape(){ if(tapeTrack) tapeTrack.style.animationPlayState = 'paused'; }
+  function resumeTape(){ if(tapeTrack) tapeTrack.style.animationPlayState = 'running'; }
   function tuneTickerSpeed(forcePhase=false){
     if(!tapeTrack || !tapeA) return;
-    const total = tapeA.scrollWidth; // one run
+    const total = tapeA.scrollWidth; // largura de uma corrida
     // target ~110px/s for readability
     const pxPerSec = 110;
     const seconds = Math.max(20, Math.min(90, total / pxPerSec));
     const prev = getComputedStyle(tapeTrack).getPropertyValue('--tape-speed').trim();
     tapeTrack.style.setProperty('--tape-speed', seconds + 's');
+    tapeTrack.style.setProperty('--tape-distance', total + 'px');
     // preservar a fase da animação ao mudar duração ou conteúdo
     if(forcePhase || (prev !== (seconds + 's'))){
       const elapsed = (performance.now() - TAPE_START_TS) / 1000;
       const phase = (elapsed % seconds).toFixed(3);
       tapeTrack.style.animationDelay = `-${phase}s`;
     }
+    // pequeno debounce de retomada para evitar 'arrancos' após recálculo
+    if(_tapePauseTimer) clearTimeout(_tapePauseTimer);
+    resumeTape();
   }
-  const roTicker = new ResizeObserver(()=> tuneTickerSpeed());
+  const roTicker = new ResizeObserver(()=>{
+    pauseTape();
+    if(_tapePauseTimer) clearTimeout(_tapePauseTimer);
+    _tapePauseTimer = setTimeout(()=> tuneTickerSpeed(true), 120);
+  });
   if(tapeTrack) roTicker.observe(tapeTrack);
 
   // ===== FULLSCREEN ==========================================================
