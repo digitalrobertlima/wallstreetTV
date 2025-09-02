@@ -235,6 +235,29 @@
 				"push"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-v0.0.10-usdt-news",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"feat(usdt): alternate USDT card every 35s with global headlines (10 RSS sources via AllOrigins; 3 BR + 7 global); CSP/connect + CSS; just-in-time refresh",
+				"&&",
+				"git",
+				"push",
+				"--set-upstream",
+				"origin",
+				"v0.0.10"
+			],
+			"group": "build"
 		}
 	]
 }

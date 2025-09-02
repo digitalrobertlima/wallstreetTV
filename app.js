@@ -58,7 +58,8 @@
     'https://api.coingecko.com',
     'https://www.bitstamp.net',
     'https://api.exchangerate.host',
-    'https://api.open-meteo.com'
+  'https://api.open-meteo.com',
+  'https://api.allorigins.win'
   ]);
   function maybePreconnect(url){
     let origin;
@@ -345,6 +346,13 @@
           <div class="delta" id="d-${c.pair}">—</div>
         </div>
       </div>
+      ${c.pair==='usdt-brl' ? `
+      <div class="usdt-news" id="news-${c.pair}">
+        <div class="headline">
+          <div class="source" id="news-src-${c.pair}">—</div>
+          <div class="title" id="news-ttl-${c.pair}">—</div>
+        </div>
+      </div>` : ''}
       <div class="kpis">
         <div class="kpi"><div class="label">Alta 24h</div><div class="value" id="hi-${c.pair}">—</div></div>
         <div class="kpi"><div class="label">Baixa 24h</div><div class="value" id="lo-${c.pair}">—</div></div>
@@ -409,6 +417,64 @@
       });
     }
   });
+
+  // ===== News aggregator (10 free public RSS endpoints via AllOrigins) =====
+  // 3 brasileiras + 7 internacionais
+  const NEWS_SOURCES = [
+    // Brasil
+    { name:'G1 Economia', url:'https://g1.globo.com/economia/rss2.xml' },
+    { name:'Estadão Economia', url:'https://economia.estadao.com.br/rss' },
+    { name:'Valor Investe', url:'https://valorinveste.globo.com/rss/ultimas/feed.xml' },
+    // Global
+    { name:'Reuters Business', url:'https://feeds.reuters.com/reuters/businessNews' },
+    { name:'Bloomberg Markets', url:'https://www.bloomberg.com/feeds/podcasts/etf-report.xml' },
+    { name:'Financial Times', url:'https://www.ft.com/world/us/rss' },
+    { name:'BBC Business', url:'https://feeds.bbci.co.uk/news/business/rss.xml' },
+    { name:'CNBC Top', url:'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
+    { name:'Yahoo Finance', url:'https://finance.yahoo.com/news/rss' },
+    { name:'Investing.com', url:'https://www.investing.com/rss/news_25.rss' }
+  ];
+  const NEWS = { items: [], idx: 0, lastAt: 0, ttl: 10*60*1000 };
+  function buildAllOriginsUrl(feed){ return `https://api.allorigins.win/get?url=${encodeURIComponent(feed)}`; }
+  async function fetchRSS(feed){
+    const url = buildAllOriginsUrl(feed);
+    const j = await getJSON(url);
+    const xml = j?.contents || '';
+    if(!xml) return [];
+    try{
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+      const items = Array.from(doc.querySelectorAll('item'));
+      if(items.length){
+        return items.slice(0, 5).map(n => ({
+          title: (n.querySelector('title')?.textContent || '').trim(),
+          link: (n.querySelector('link')?.textContent || '').trim()
+        })).filter(it => it.title);
+      }
+      // Atom fallback
+      const entries = Array.from(doc.querySelectorAll('entry'));
+      return entries.slice(0, 5).map(n => ({
+        title: (n.querySelector('title')?.textContent || '').trim(),
+        link: (n.querySelector('link')?.getAttribute('href') || '').trim()
+      })).filter(it => it.title);
+    }catch{ return []; }
+  }
+  async function refreshNews(){
+    const now = Date.now(); if((now - NEWS.lastAt) < NEWS.ttl && NEWS.items.length) return;
+    const all = [];
+    for(const src of NEWS_SOURCES){
+      try{
+        const arr = await fetchRSS(src.url);
+        for(const it of arr){ all.push({ source: src.name, title: it.title, link: it.link }); }
+      }catch{}
+      await sleep(120);
+    }
+    if(all.length){ NEWS.items = all; NEWS.lastAt = Date.now(); NEWS.idx = 0; }
+  }
+
+  // Alternância USDT: 35s normal, 35s manchete
+  let USDT_NEWS_MODE = false; let _altTimer = null;
+  function scheduleUSDTAlternate(){ if(_altTimer) clearTimeout(_altTimer); _altTimer = setTimeout(()=>{ USDT_NEWS_MODE = !USDT_NEWS_MODE; render(); scheduleUSDTAlternate(); }, REFRESH_MS); }
+  scheduleUSDTAlternate();
   function canPlay(pair){ if(!SOUND.enabled) return false; if(AUD_SOLO){ return AUD_SOLO === pair; } return !!S[pair].aud; }
 
   // ===== Fetchers com timeout ==============================================
@@ -750,6 +816,21 @@
     if(remMs < GUARD_MS){ if(!_tapeUpdateTimer){ _tapeUpdateTimer = setTimeout(safeUpdate, Math.max(30, remMs + 30)); } } else { updateTape(); }
     for(const c of COINS){
       const k = c.pair, st = S[k];
+      const isUSDT = (k === 'usdt-brl');
+      // Toggle news mode class on the tile for USDT
+      if(isUSDT){ const t = tiles[k]; if(t){ if(USDT_NEWS_MODE){ t.classList.add('usdt-news-mode'); } else { t.classList.remove('usdt-news-mode'); } } }
+      if(isUSDT && USDT_NEWS_MODE){
+        // Render headline instead of market data
+        const nWrap = document.getElementById(`news-${k}`);
+        const nSrc = document.getElementById(`news-src-${k}`);
+        const nTtl = document.getElementById(`news-ttl-${k}`);
+        if(nWrap && nSrc && nTtl){
+          const it = (NEWS.items && NEWS.items.length) ? NEWS.items[NEWS.idx % NEWS.items.length] : null;
+          if(!it){ nSrc.textContent = 'Carregando manchetes…'; nTtl.textContent = '—'; }
+          else { nSrc.textContent = it.source; nTtl.textContent = it.title; NEWS.idx = (NEWS.idx + 1) % NEWS.items.length; }
+        }
+        continue; // skip normal render for USDT during news mode
+      }
       const dispPrice = choosePrice(st);
       // Atualiza direção de cor com base no preço exibido (sticky até mudar)
       const prevShown = st._dispLast;
@@ -1133,6 +1214,7 @@
         if((cycleCount % 2) === 1){ await fetchBinanceLight(); }
         if((cycleCount % CG_EVERY) === 0){ await fetchCoinGeckoBatch(); }
         if((cycleCount % BS_EVERY) === 0){ await fetchBitstampLight(); }
+  if((cycleCount % 1) === 0){ await refreshNews(); }
         render();
       }catch(e){ console.error('aux fetch erro:', e); }
       _isRunning = false; scheduleNext(nextDelay());
