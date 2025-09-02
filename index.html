@@ -101,6 +101,15 @@
     .tick{display:inline-flex; gap:10px; align-items:center; font-weight:700}
     .sym{color:#d1d7e0; font-size:13px; letter-spacing:.4px}
     .pri{font-size:14px}
+    /* pulse de preço no ticker (sutil) */
+    .pri.pulse{border-radius:6px; padding:2px 6px}
+    .pri.pulse.up{animation: pulseUp 900ms ease-out 1}
+    .pri.pulse.down{animation: pulseDown 900ms ease-out 1}
+    @keyframes pulseUp{0%{background:transparent}25%{background:rgba(0,200,83,.22)}100%{background:transparent}}
+    @keyframes pulseDown{0%{background:transparent}25%{background:rgba(255,59,48,.22)}100%{background:transparent}}
+    @media (prefers-reduced-motion: reduce){
+      .pri.pulse.up,.pri.pulse.down{animation:none}
+    }
     .sig.up{color:var(--up)}
     .sig.down{color:var(--down)}
     .sep{opacity:.5; color:var(--muted)}
@@ -206,6 +215,8 @@
   if(versionBadge) versionBadge.textContent = APP_VERSION;
 
   const tiles = {};
+  // memória do último preço exibido na fita por par para disparar pulse sutil
+  const TAPE_LAST = Object.create(null);
   COINS.forEach(c => {
     const tile = document.createElement('section');
     tile.className = 'tile';
@@ -443,7 +454,20 @@
       const price = Number.isFinite(priceNum) ? fmtBRL.format(priceNum) : '—';
       const d = (st.prev && st.last) ? (st.last - st.prev) : 0;
       const cls = d>0 ? 'up' : d<0 ? 'down' : '';
-      return `<span class="tick"><span class="sym">${c.symbol}</span><span class="pri">${price}</span><span class="sig ${cls}">${d>0?'▲':d<0?'▼':'•'}</span></span>`;
+      // decidir se aplica pulse (0.02% ou R$0,02, o que for maior)
+      let pulseCls = '';
+      const prevTape = TAPE_LAST[c.pair];
+      if(Number.isFinite(priceNum) && Number.isFinite(prevTape)){
+        const rel = priceNum / prevTape - 1;
+        const absRel = Math.abs(rel);
+        const MIN_REL = 0.0002; // 0.02%
+        const MIN_ABS = 0.02;   // R$ 0,02
+        if(absRel >= MIN_REL || Math.abs(priceNum - prevTape) >= MIN_ABS){
+          pulseCls = rel > 0 ? 'pulse up' : rel < 0 ? 'pulse down' : '';
+        }
+      }
+      if(Number.isFinite(priceNum)) TAPE_LAST[c.pair] = priceNum;
+      return `<span class="tick"><span class="sym">${c.symbol}</span><span class="pri ${pulseCls}">${price}</span><span class="sig ${cls}">${d>0?'▲':d<0?'▼':'•'}</span></span>`;
     });
     const html = items.join('<span class="sep">·</span>');
     // Preenche duas execuções para loop contínuo
