@@ -95,6 +95,9 @@ canvas.spark{width:100%; height:56px; border-radius:10px; background:linear-grad
 .pill{padding:4px 8px; border-radius:8px; font-weight:700}
 .pill.buy{background: rgba(0,200,83,.12); color: var(--up)}
 .pill.sell{background: rgba(255,59,48,.12); color: var(--down)}
+/* tile footer */
+.tile-foot{display:flex; align-items:center; justify-content:flex-end; margin-top:auto}
+.aud-controls{display:flex; gap:8px}
 footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,.06)}
 .info{display:flex; flex-direction:column; gap:6px; align-items:flex-start}
 .wx-box{background:#0b0f16; color:#d1d7e0; border-radius:10px; padding:6px 10px; font-size:13px; line-height:1; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05)}

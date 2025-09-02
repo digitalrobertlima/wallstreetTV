@@ -205,8 +205,6 @@
           <div class="ticker">${c.symbol}</div>
           <div class="pair">${c.label}</div>
           <span class="mini-dot" id="md-${c.pair}" aria-hidden="true"></span>
-          <button class="aud-btn" id="au-${c.pair}" aria-pressed="${S[c.pair].aud? 'true':'false'}" title="Ativar som para ${c.symbol}">${S[c.pair].aud ? '🔊' : '🔇'}</button>
-          <button class="solo-btn" id="so-${c.pair}" aria-pressed="${AUD_SOLO===c.pair? 'true':'false'}" title="Solo: ouvir apenas ${c.symbol}">🎧</button>
         </div>
         <div class="row row-tight align-end">
           <div class="price" id="p-${c.pair}" aria-live="polite" aria-atomic="true" aria-label="Preço atual">—</div>
@@ -232,6 +230,12 @@
         <span id="tp-${c.pair}">—</span>
         <span>•</span>
         <span id="ts-${c.pair}">—</span>
+      </div>
+      <div class="tile-foot">
+        <div class="aud-controls">
+          <button class="aud-btn" id="au-${c.pair}" aria-pressed="${S[c.pair].aud? 'true':'false'}" title="Ativar som para ${c.symbol}">${S[c.pair].aud ? '🔊' : '🔇'}</button>
+          <button class="solo-btn" id="so-${c.pair}" aria-pressed="${AUD_SOLO===c.pair? 'true':'false'}" title="Solo: ouvir apenas ${c.symbol}">🎧</button>
+        </div>
       </div>
     `;
     grid.appendChild(tile);
