@@ -150,6 +150,7 @@
     { symbol: 'BTC', pair: 'btc-brl', label: 'BTC/BRL' },
     { symbol: 'ETH', pair: 'eth-brl', label: 'ETH/BRL' },
     { symbol: 'BNB', pair: 'bnb-brl', label: 'BNB/BRL' },
+  { symbol: 'DASH', pair: 'dash-brl', label: 'DASH/BRL' },
   // adicionados
   { symbol: 'USDT', pair: 'usdt-brl', label: 'USDT/BRL' },
   { symbol: 'USDC', pair: 'usdc-brl', label: 'USDC/BRL' },
@@ -168,6 +169,10 @@
   const ENDPOINTS_BINANCE = {
     PRICE:      (symbol) => `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`,
     BOOK_TICKER:(symbol) => `https://api.binance.com/api/v3/ticker/bookTicker?symbol=${symbol}`,
+  };
+  // NovaDAX (pública)
+  const ENDPOINTS_NOVADAX = {
+    TICKER: (symbol) => `https://api.novadax.com/v1/market/ticker?symbol=${symbol}`,
   };
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' });
   const fmtNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 8 });
@@ -189,7 +194,7 @@
     bid:null, ask:null, spread:null,
     trade:null, history:[], // preços recentes para sparkline
     lastAt:null, // timestamp do último update BitPreço
-    alt:{ last:null, bid:null, ask:null, at:null }, // dados alternativos (Binance)
+  alt:{ last:null, bid:null, ask:null, at:null }, // dados alternativos (Binance/NovaDAX/sintético)
     _histAt:null, // controle de frequência de pontos no spark
   }]));
 
@@ -298,14 +303,15 @@
   function applyTicker(pair, t){
     const st = S[pair];
     st.prev = st.last;
-    st.last = Number(t.last ?? t.price ?? t.Last ?? t.LAST ?? NaN);
+  const computedLast = Number(t.last ?? t.price ?? t.Last ?? t.LAST ?? NaN);
+  st.last = (Number.isFinite(computedLast) && computedLast > 0) ? computedLast : NaN;
     st.high = Number(t.high ?? t.High ?? NaN);
     st.low  = Number(t.low  ?? t.Low  ?? NaN);
     st.vol  = Number(t.vol  ?? t.volume ?? NaN);
     st.var  = (t.var !== undefined) ? Number(t.var) : null; // var 24h conforme documentação BitPreço
     st.lastAt = Date.now();
 
-    if(Number.isFinite(st.last)){
+  if(Number.isFinite(st.last) && st.last > 0){
       maybePushHistory(st, st.last);
     }
   }
@@ -356,6 +362,9 @@
     return [c.pair, s];
   }));
 
+  // Símbolos auxiliares para fallback sintético (USDT cross)
+  const BINANCE_AUX = { DASH_USDT: 'DASHUSDT', USDT_BRL: 'USDTBRL' };
+
   async function fetchBinanceLight(){
     const BATCH = 4;
     for(let i=0;i<COINS.length;i+=BATCH){
@@ -373,7 +382,7 @@
             st.alt.last = last; st.alt.at = Date.now();
             maybePushHistory(st, last);
           }
-        }catch(e){ /* símbolo pode não existir em BRL na Binance */ }
+  }catch(e){ /* símbolo pode não existir em BRL na Binance */ }
         try{
           // best bid/ask
           const bt = await getJSON(ENDPOINTS_BINANCE.BOOK_TICKER(sym));
@@ -384,6 +393,36 @@
           st.alt.ask = Number.isFinite(ask) ? ask : st.alt.ask;
           if(Number.isFinite(st.alt.bid) && Number.isFinite(st.alt.ask)) st.alt.at = Date.now();
         }catch(e){ /* ignorar se indisponível */ }
+        // fallback sintético DASH/BRL ≈ DASH/USDT * USDT/BRL
+        if(pair === 'dash-brl' && (!Number.isFinite(S[pair].alt.last) || !sym || sym === 'DASHBRL')){
+          try{
+            const [pDashUsdt, pUsdtBrl] = await Promise.all([
+              getJSON(ENDPOINTS_BINANCE.PRICE(BINANCE_AUX.DASH_USDT)),
+              getJSON(ENDPOINTS_BINANCE.PRICE(BINANCE_AUX.USDT_BRL))
+            ]);
+            const a = Number(pDashUsdt?.price ?? NaN);
+            const b = Number(pUsdtBrl?.price ?? NaN);
+            const st = S[pair];
+            if(Number.isFinite(a) && Number.isFinite(b)){
+              const last = a * b;
+              st.alt.last = last; st.alt.at = Date.now(); maybePushHistory(st, last);
+            }
+          }catch(e){ /* ignore */ }
+        }
+        // NovaDAX somente para DASH/BRL como fallback adicional
+        if(pair === 'dash-brl'){
+          try{
+            const nd = await getJSON(ENDPOINTS_NOVADAX.TICKER('DASH_BRL'));
+            const d = nd?.data;
+            const last = Number(d?.lastPrice ?? NaN);
+            const bid = Number(d?.bid ?? NaN);
+            const ask = Number(d?.ask ?? NaN);
+            const st = S[pair];
+            if(Number.isFinite(last) && last > 0){ st.alt.last = last; st.alt.at = Date.now(); maybePushHistory(st, last); }
+            if(Number.isFinite(bid)) st.alt.bid = bid;
+            if(Number.isFinite(ask)) st.alt.ask = ask;
+          }catch(e){ /* ignorar falha NovaDAX */ }
+        }
       }));
       await sleep(150);
     }
@@ -480,9 +519,9 @@
   function choosePrice(st){
     const now = Date.now();
     const freshMs = 2 * REFRESH_MS;
-    if(Number.isFinite(st.last) && st.lastAt && (now - st.lastAt) < freshMs) return st.last;
+  if(Number.isFinite(st.last) && st.last > 0 && st.lastAt && (now - st.lastAt) < freshMs) return st.last;
     if(Number.isFinite(st.alt.last) && st.alt.at && (now - st.alt.at) < freshMs) return st.alt.last;
-    return Number.isFinite(st.last) ? st.last : (Number.isFinite(st.alt.last) ? st.alt.last : NaN);
+  return Number.isFinite(st.last) && st.last > 0 ? st.last : (Number.isFinite(st.alt.last) ? st.alt.last : NaN);
   }
 
   function setText(id, txt){ const el = document.getElementById(id); if(el) el.textContent = txt; }
