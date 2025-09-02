@@ -88,7 +88,7 @@ button:hover{background:#232b3a}
 .pair{color:var(--muted); font-size: clamp(11px, 1.6vw, 12px)}
 .price{font-size: clamp(18px, 4.4vw, 40px); font-weight:900; line-height:1.1}
 .row .price{min-width:0; flex:1 1 auto; white-space:nowrap}
-.delta{font-weight:700}
+.delta{font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:36ch}
 .delta.up{color:var(--up)}
 .delta.down{color:var(--down)}
 .kpis{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px}

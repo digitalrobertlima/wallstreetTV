@@ -735,7 +735,7 @@
   if(md){ md.classList.remove('ping'); void md.offsetWidth; md.classList.add('ping'); }
       }
       // Indicadores rápidos baseados na janela selecionada
-      const { seriesF } = filterWindow(st);
+  const { seriesF, tsF } = filterWindow(st);
       let dStr = '—', dCls = '';
       if(seriesF.length >= 2){
         const a = seriesF[0], b = seriesF[seriesF.length-1];
@@ -748,7 +748,7 @@
         dStr = `${pct>=0?'+':''}${pct.toFixed(2)}% • σ ${sigma.toFixed(2)}%`;
         dCls = pct>0 ? 'up' : pct<0 ? 'down' : '';
       }
-      setDelta(`d-${k}`, dStr, dCls);
+  setDelta(`d-${k}`, dStr, dCls);
   const stats = chooseStats(st);
   setText(`hi-${k}`, Number.isFinite(stats.hi) ? fmtBRL.format(stats.hi) : '—');
   setText(`lo-${k}`, Number.isFinite(stats.lo) ? fmtBRL.format(stats.lo) : '—');
@@ -764,7 +764,9 @@
       setText(`ta-${k}`, tr?.amount != null ? `${fmtNum.format(Number(tr.amount))}` : '—');
       setText(`tp-${k}`, tr?.price  != null ? fmtBRL.format(Number(tr.price)) : '—');
       setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
-  drawSpark(`sp-${k}`, seriesF, st.histTS);
+  const binMs = binSizeForRange(RANGE_CUR);
+  const candles = makeCandles(tsF, seriesF, binMs);
+  drawCandles(`sp-${k}`, candles);
     }
     // Atualiza barra de humor do mercado (proporção verde x vermelho)
     if(moodBar){
@@ -933,6 +935,105 @@
         chartTip.style.top = `${Math.max(6, ty)}px`;
       };
       const onLeave = ()=>{ if(chartTip) chartTip.hidden = true; };
+      el.addEventListener('mousemove', onMove);
+      el.addEventListener('touchstart', onMove, { passive:true });
+      el.addEventListener('touchmove', onMove, { passive:true });
+      el.addEventListener('mouseleave', onLeave);
+      el.addEventListener('touchend', onLeave);
+      el.addEventListener('touchcancel', onLeave);
+    }
+  }
+
+  // ===== Candlesticks =======================================================
+  function binSizeForRange(key){
+    // choose coarse bins to fit ~60-120 candles
+    switch(key){
+      case '1h': return 60_000;       // 1 min
+      case '4h': return 5*60_000;     // 5 min
+      case '24h': default: return 15*60_000; // 15 min
+    }
+  }
+  function makeCandles(ts, prices, binMs){
+    const out = [];
+    if(!ts || !prices || ts.length !== prices.length || ts.length === 0) return out;
+    let cur = null; let curIdx = -1;
+    const n = ts.length;
+    for(let i=0;i<n;i++){
+      const t = ts[i]; const p = prices[i]; if(!Number.isFinite(t) || !Number.isFinite(p)) continue;
+      const bucket = Math.floor(t / binMs) * binMs;
+      if(!cur || bucket !== cur.t){
+        // flush
+        if(cur){ out.push(cur); }
+        cur = { t: bucket, o: p, h: p, l: p, c: p, v: 1, firstIdx: i, lastIdx: i };
+        curIdx++;
+      } else {
+        // acc
+        if(p > cur.h) cur.h = p; if(p < cur.l) cur.l = p; cur.c = p; cur.v++; cur.lastIdx = i;
+      }
+    }
+    if(cur) out.push(cur);
+    return out;
+  }
+  function drawCandles(id, candles){
+    const el = document.getElementById(id); if(!el) return;
+    const ctx = el.getContext('2d'); const dpr = window.devicePixelRatio || 1;
+    if(el._dpr !== dpr){ el._dpr = dpr; el.width = Math.floor(el.clientWidth*dpr); el.height = Math.floor(el.clientHeight*dpr); }
+    const W = el.width, H = el.height; ctx.clearRect(0,0,W,H);
+    if(!candles || candles.length < 2) return;
+    const padX = 6*dpr, padY = 6*dpr;
+    const n = candles.length; const min = Math.min(...candles.map(c=>c.l)); const max = Math.max(...candles.map(c=>c.h));
+    const sx = (i)=> padX + (W - 2*padX) * (i/(n-1));
+    const sy = (v)=> max===min ? H/2 : (H - padY) - ( (v - min) / (max - min) ) * (H - 2*padY);
+
+    // grid
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1; for(let i=1;i<=4;i++){ const y=(H/(4+1))*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); } ctx.restore();
+
+    // width per candle
+    const gap = Math.max(1*dpr, (W - 2*padX) / Math.max(1, n-1) * 0.15);
+    const bodyW = Math.max(1*dpr, (W - 2*padX) / Math.max(1, n-1) * 0.6);
+
+    // draw wicks and bodies
+    for(let i=0;i<n;i++){
+      const c = candles[i]; const x = Math.round(sx(i));
+      const up = c.c >= c.o; const col = up ? 'rgba(0,200,83,.9)' : 'rgba(255,59,48,.9)';
+      const yH = sy(c.h), yL = sy(c.l), yO = sy(c.o), yC = sy(c.c);
+      // wick
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, 1*dpr);
+      ctx.beginPath(); ctx.moveTo(x, yH); ctx.lineTo(x, yL); ctx.stroke();
+      // body
+      const bx = Math.round(x - bodyW/2), by = Math.round(Math.min(yO, yC)), bh = Math.max(1, Math.abs(yC - yO));
+      ctx.fillStyle = col;
+      ctx.fillRect(bx, by, Math.max(1, Math.floor(bodyW)), bh);
+      // small gap to visually separate
+      if(gap > 1){}
+    }
+
+    // last price line
+    const last = candles[n-1].c; const yLast = sy(last);
+    ctx.save(); ctx.setLineDash([4*dpr, 3*dpr]); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, yLast); ctx.lineTo(W, yLast); ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.arc(W-5*dpr, yLast, 2*dpr, 0, Math.PI*2); ctx.fill();
+
+    // tooltip
+    const tip = document.getElementById('chartTip');
+    el._candles = { candles, padX, padY, W, H, dpr };
+    if(!el._tipWired2){
+      el._tipWired2 = true;
+      const onMove = (ev)=>{
+        if(!tip || !el._candles) return;
+        const rect = el.getBoundingClientRect();
+        const clientX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+        const clientY = (ev.touches ? ev.touches[0].clientY : ev.clientY);
+        const x = clientX - rect.left;
+        const s = el._candles; const n = s.candles.length; if(n<1) return;
+        const rx = Math.max(s.padX, Math.min(s.W - s.padX, x));
+        const t = (rx - s.padX) / Math.max(1, (s.W - 2*s.padX));
+        const idx = Math.max(0, Math.min(n-1, Math.round(t * (n-1))));
+        const c = s.candles[idx]; if(!c) return;
+        const base = s.candles[0]?.o ?? c.o; const pct = base ? ((c.c - base)/base*100) : 0;
+        tip.textContent = `${fmtBRL.format(c.c)} • O ${fmtBRL.format(c.o)} • H ${fmtBRL.format(c.h)} • L ${fmtBRL.format(c.l)} • ${pct>=0?'+':''}${pct.toFixed(2)}%`;
+        tip.hidden = false; const tipRect = tip.getBoundingClientRect(); const off=10; let tx = clientX + off, ty = clientY + off; if((tx + tipRect.width) > window.innerWidth - 6) tx = clientX - tipRect.width - off; if((ty + tipRect.height) > window.innerHeight - 6) ty = clientY - tipRect.height - off; tip.style.left = `${Math.max(6, tx)}px`; tip.style.top = `${Math.max(6, ty)}px`;
+      };
+      const onLeave = ()=>{ if(tip) tip.hidden = true; };
       el.addEventListener('mousemove', onMove);
       el.addEventListener('touchstart', onMove, { passive:true });
       el.addEventListener('touchmove', onMove, { passive:true });

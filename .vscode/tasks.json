@@ -155,6 +155,26 @@
 				"push"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-candles-delta-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"feat(charts): micro candlestick charts (OHLC) with tooltip; fix delta overlap (nowrap/ellipsis)",
+				"&&",
+				"git",
+				"push"
+			],
+			"group": "build"
 		}
 	]
 }
