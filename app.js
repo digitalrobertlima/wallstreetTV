@@ -83,10 +83,11 @@
   if(versionBadge) versionBadge.textContent = APP_VERSION;
   if(diagPersist){ diagPersist.checked = !!PERSIST; diagPersist.addEventListener('change', ()=>{ PERSIST = !!diagPersist.checked; if(!PERSIST) try{ localStorage.removeItem('wstv_diag'); }catch{} else saveDiag(); }); }
 
-  // Mostrar badge PWA se standalone
-  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-    if(pwaBadge) pwaBadge.hidden = false;
-  }
+  // Mostrar badge PWA somente quando de fato em modo instalado/standalone
+  try{
+    const isStandalone = (('standalone' in navigator) && navigator.standalone === true) || window.matchMedia('(display-mode: standalone)').matches;
+    if(pwaBadge) pwaBadge.hidden = !isStandalone;
+  }catch{ if(pwaBadge) pwaBadge.hidden = true; }
 
   // ===== UI Build ===========================================================
   const tiles = {};
@@ -359,6 +360,15 @@
       const priceEl = document.getElementById(`p-${k}`);
       if(priceEl){
         priceEl.className = `price blink ${st.dir || 'flat'}`;
+      }
+      // flash na tile quando muda o preço exibido
+      const tile = tiles[k];
+      if(tile && Number.isFinite(dispPrice) && Number.isFinite(prevShown) && dispPrice !== prevShown){
+        const cls = dispPrice > prevShown ? 'flash-up' : 'flash-down';
+        tile.classList.remove('flash-up','flash-down');
+        // force reflow para reiniciar animação
+        void tile.offsetWidth;
+        tile.classList.add(cls);
       }
       let deltaStr = '—', cls = '';
       if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
