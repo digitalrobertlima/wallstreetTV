@@ -39,6 +39,7 @@ header{
 .brand h1{font-size: clamp(16px, 2.4vw, 22px); margin:0; letter-spacing:.5px}
 .sub{color:var(--muted); font-size: clamp(11px, 1.4vw, 13px)}
 .controls{display:flex; gap:10px; align-items:center}
+.sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0}
 .net{display:inline-flex; align-items:center; gap:8px}
 .dot{width:10px; height:10px; border-radius:999px; background:#8892a6; box-shadow:0 0 0 1px rgba(255,255,255,.15) inset, 0 0 0 0 rgba(0,200,83,0); animation: netPulse 2.2s ease-out infinite}
 .dot.ok{background:#00C853}
@@ -49,6 +50,9 @@ header{
 button{all:unset; cursor:pointer; padding:10px 14px; border-radius:12px; background:#1a202c; color:#e6e6e6; font-weight:600}
 button:hover{background:#232b3a}
 .controls button[aria-pressed="true"]{background:#223047}
+.intensity{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; background:#0d121a; border-radius:12px}
+.intensity input[type="range"]{width:100px}
+.intensity span{color:#cbd5e1}
 .grid{
   display:grid; gap: var(--grid-gap);
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -81,7 +85,7 @@ button:hover{background:#232b3a}
 .kpi .value{font-weight:700; font-size:14px; margin-top:2px}
 .book{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px}
 .badge{font-size:11px; padding:4px 8px; border-radius:999px; background:#0d121a; color:var(--muted);}
-canvas.spark{width:100%; height:56px; border-radius:10px; background:linear-gradient(180deg,#0c1118,#0a0d12)}
+canvas.spark{width:100%; height:56px; border-radius:10px; background:linear-gradient(180deg,#0c1118,#0a0d12); box-shadow: inset 0 0 0 1px rgba(255,255,255,.03)}
 .trade{display:flex; gap:10px; align-items:center; font-size:13px; color:var(--muted)}
 .pill{padding:4px 8px; border-radius:8px; font-weight:700}
 .pill.buy{background: rgba(0,200,83,.12); color: var(--up)}

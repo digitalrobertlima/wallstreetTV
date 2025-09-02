@@ -80,10 +80,18 @@
   const diagPersist = document.getElementById('diagPersist');
   const moodBar = document.getElementById('moodBar');
   const soundBtn = document.getElementById('soundBtn');
+  const intensityInput = document.getElementById('intensity');
 
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
   if(versionBadge) versionBadge.textContent = APP_VERSION;
   if(diagPersist){ diagPersist.checked = !!PERSIST; diagPersist.addEventListener('change', ()=>{ PERSIST = !!diagPersist.checked; if(!PERSIST) try{ localStorage.removeItem('wstv_diag'); }catch{} else saveDiag(); }); }
+
+  // Intensidade visual (0-100) influencia brilhos/tempos sutis
+  let INTENSITY = 70;
+  try{ const v = Number(localStorage.getItem('wstv_intensity')); if(Number.isFinite(v)) INTENSITY = Math.max(0, Math.min(100, v)); }catch{}
+  function applyIntensity(){ const root = document.documentElement; root.style.setProperty('--intensity', String(INTENSITY)); }
+  applyIntensity();
+  if(intensityInput){ intensityInput.value = String(INTENSITY); intensityInput.addEventListener('input', ()=>{ const v = Number(intensityInput.value); INTENSITY = Math.max(0, Math.min(100, v)); applyIntensity(); try{ localStorage.setItem('wstv_intensity', String(INTENSITY)); }catch{} }); }
 
   // ===== Som (WebAudio) =====================================================
   const SOUND = { enabled:false, ctx:null, master:null, _lastAt:0, vol:0.04 };
@@ -462,7 +470,69 @@
   function setPill(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent = txt; el.className = `pill ${cls}`; }
   function setNet(ok){ const d = document.getElementById('netDot'); if(!d) return; d.className = `dot ${ok? 'ok':'err'}`; d.title = ok? 'Conexão OK' : 'Falha de rede parcial'; }
   function humanTime(ts){ const t = new Date(ts); if(isNaN(+t)) return String(ts); const diff = (Date.now()-t.getTime())/1000; if(diff < 60) return `${Math.floor(diff)}s atrás`; if(diff < 3600) return `${Math.floor(diff/60)}min atrás`; const d = t.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); return d; }
-  function drawSpark(id, series){ const el = document.getElementById(id); if(!el) return; const ctx = el.getContext('2d'); const dpr = window.devicePixelRatio || 1; if(el._dpr !== dpr){ el._dpr = dpr; el.width = Math.floor(el.clientWidth*dpr); el.height = Math.floor(el.clientHeight*dpr); } const W = el.width, H = el.height; ctx.clearRect(0,0,W,H); ctx.globalAlpha = .5; ctx.strokeStyle = 'rgba(255,255,255,.04)'; const lines = 3; for(let i=1;i<=lines;i++){ const y = (H/(lines+1))*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); } ctx.globalAlpha = 1; if(!series || series.length<2){ return; } const min = Math.min(...series), max = Math.max(...series); const pad = 6*dpr; const scaleX = (i)=> pad + (W-2*pad) * (i/(series.length-1)); const scaleY = (v)=>{ if(max===min) return H/2; return H - pad - ( (v - min) / (max - min) ) * (H - 2*pad); }; const last = series[series.length-1], prev = series[series.length-2]; const up = last >= prev; ctx.lineWidth = 2*dpr; ctx.strokeStyle = up ? 'rgba(0,200,83,.95)' : 'rgba(255,59,48,.95)'; ctx.beginPath(); ctx.moveTo(scaleX(0), scaleY(series[0])); for(let i=1;i<series.length;i++) ctx.lineTo(scaleX(i), scaleY(series[i])); ctx.stroke(); const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0, up ? 'rgba(0,200,83,.20)' : 'rgba(255,59,48,.20)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.lineTo(W-pad, H-pad); ctx.lineTo(pad, H-pad); ctx.closePath(); ctx.fill(); }
+  function drawSpark(id, series){
+    const el = document.getElementById(id); if(!el) return;
+    const ctx = el.getContext('2d'); const dpr = window.devicePixelRatio || 1;
+    if(el._dpr !== dpr){ el._dpr = dpr; el.width = Math.floor(el.clientWidth*dpr); el.height = Math.floor(el.clientHeight*dpr); }
+    const W = el.width, H = el.height; ctx.clearRect(0,0,W,H);
+
+    // grid linhas sutis
+    ctx.globalAlpha = .5; ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    const lines = 3; for(let i=1;i<=lines;i++){ const y = (H/(lines+1))*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    if(!series || series.length<2){ return; }
+    const min = Math.min(...series), max = Math.max(...series);
+    const pad = 6*dpr;
+    const scaleX = (i)=> pad + (W-2*pad) * (i/(series.length-1));
+    const scaleY = (v)=>{ if(max===min) return H/2; return H - pad - ( (v - min) / (max - min) ) * (H - 2*pad); };
+
+    const last = series[series.length-1], prev = series[series.length-2];
+    const up = last >= prev;
+
+    // curva suavizada (Catmull-Rom -> Bézier simplificada)
+    const pts = series.map((v,i)=>({x:scaleX(i), y:scaleY(v)}));
+    const tension = 0.5; // leve suavização
+    function controlPoints(p0,p1,p2,p3,t){ const d01 = Math.hypot(p1.x-p0.x, p1.y-p0.y) || 1; const d12 = Math.hypot(p2.x-p1.x, p2.y-p1.y) || 1; const d23 = Math.hypot(p3.x-p2.x, p3.y-p2.y) || 1; const fa = t * d01 / (d01 + d12); const fb = t * d23 / (d12 + d23); const p1x = p1.x + fa * (p2.x - p0.x); const p1y = p1.y + fa * (p2.y - p0.y); const p2x = p2.x - fb * (p3.x - p1.x); const p2y = p2.y - fb * (p3.y - p1.y); return {cp1:{x:p1x,y:p1y}, cp2:{x:p2x,y:p2y}}; }
+
+    // cor e brilho escalados pela intensidade
+    const glow = Math.max(0.08, Math.min(0.45, (INTENSITY/100) * 0.35));
+    const strokeCol = up ? `rgba(0,200,83,${0.95})` : `rgba(255,59,48,${0.95})`;
+    const glowCol = up ? `rgba(0,200,83,${glow})` : `rgba(255,59,48,${glow})`;
+
+    ctx.lineWidth = 2*dpr; ctx.strokeStyle = strokeCol; ctx.fillStyle = glowCol;
+
+    // trilha de brilho suave
+    ctx.save();
+    ctx.shadowColor = glowCol; ctx.shadowBlur = 12 * (INTENSITY/100);
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for(let i=0;i<pts.length-1;i++){
+      const p0 = pts[Math.max(0, i-1)];
+      const p1 = pts[i];
+      const p2 = pts[i+1];
+      const p3 = pts[Math.min(pts.length-1, i+2)];
+      const {cp1, cp2} = controlPoints(p0,p1,p2,p3,tension);
+      ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // preenchimento degradê sutil
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, up ? `rgba(0,200,83,${0.18 + glow*0.15})` : `rgba(255,59,48,${0.18 + glow*0.15})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.lineTo(W-pad, H-pad);
+    ctx.lineTo(pad, H-pad);
+    ctx.closePath();
+    ctx.fill();
+
+    // marcador do último ponto
+    const lp = pts[pts.length-1];
+    ctx.beginPath(); ctx.fillStyle = up ? 'rgba(0,200,83,0.9)' : 'rgba(255,59,48,0.9)';
+    ctx.arc(lp.x, lp.y, 2.5*dpr, 0, Math.PI*2);
+    ctx.fill();
+  }
 
   // ===== Loop ================================================================
   async function cycle(){ NET_ERR = false; await fetchTickers(); await fetchOrderbookAndTrades(); render(); lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); setNet(!NET_ERR); cycleCount++; }
