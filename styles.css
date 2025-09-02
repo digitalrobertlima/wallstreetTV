@@ -27,6 +27,8 @@ header{
   background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0));
   position:sticky; top:0; z-index:2;
 }
+.mood-bar{height:4px; width:100%; background:linear-gradient(90deg, rgba(255,59,48,.25), rgba(0,200,83,.25)); position:sticky; top:56px; z-index:2}
+.mood-bar::after{content:""; display:block; height:100%; width:var(--mood,50%); background:linear-gradient(90deg, rgba(255,59,48,.5), rgba(0,200,83,.5)); transition:width .6s ease}
 .brand{display:flex; gap:12px; align-items:center}
 .logo{
   width:34px; aspect-ratio:1; border-radius:8px;
@@ -62,6 +64,9 @@ button:hover{background:#232b3a}
 .align-end{align-items:flex-end}
 .tile .row > .row{min-width:0}
 .id{display:flex; align-items:center; gap:10px}
+.mini-dot{width:6px; height:6px; border-radius:999px; background:#243040; box-shadow:0 0 0 0 rgba(153,246,228,0);}
+.mini-dot.ping{background:#99f6e4; box-shadow:0 0 0 8px rgba(153,246,228,.0); animation: dotPing .8s ease-out}
+@keyframes dotPing{0%{box-shadow:0 0 0 0 rgba(153,246,228,.25)}100%{box-shadow:0 0 0 8px rgba(153,246,228,0)}}
 .ticker{font-size: clamp(18px, 4vw, 28px); font-weight:800; letter-spacing:1px}
 .pair{color:var(--muted); font-size: clamp(11px, 1.6vw, 12px)}
 .price{font-size: clamp(18px, 4.4vw, 40px); font-weight:900; line-height:1.1}

@@ -78,6 +78,7 @@
   const diagErrors = document.getElementById('diagErrors');
   const diagLastErr = document.getElementById('diagLastErr');
   const diagPersist = document.getElementById('diagPersist');
+  const moodBar = document.getElementById('moodBar');
 
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
   if(versionBadge) versionBadge.textContent = APP_VERSION;
@@ -152,6 +153,7 @@
         <div class="id">
           <div class="ticker">${c.symbol}</div>
           <div class="pair">${c.label}</div>
+          <span class="mini-dot" id="md-${c.pair}" aria-hidden="true"></span>
         </div>
         <div class="row row-tight align-end">
           <div class="price" id="p-${c.pair}" aria-live="polite" aria-atomic="true" aria-label="Preço atual">—</div>
@@ -369,6 +371,8 @@
         // force reflow para reiniciar animação
         void tile.offsetWidth;
         tile.classList.add(cls);
+  const md = document.getElementById(`md-${k}`);
+  if(md){ md.classList.remove('ping'); void md.offsetWidth; md.classList.add('ping'); }
       }
       let deltaStr = '—', cls = '';
       if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
@@ -391,6 +395,21 @@
       setText(`tp-${k}`, tr?.price  != null ? fmtBRL.format(Number(tr.price)) : '—');
       setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
       drawSpark(`sp-${k}`, st.history);
+    }
+    // Atualiza barra de humor do mercado (proporção verde x vermelho)
+    if(moodBar){
+      let up=0, down=0;
+      for(const c of COINS){
+        const st = S[c.pair];
+        if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
+          if(st.last > st.prev) up++; else if(st.last < st.prev) down++;
+        } else {
+          // fallback: usa dir sticky
+          if(st.dir === 'up') up++; else if(st.dir === 'down') down++;
+        }
+      }
+      const total = up + down; const greenRatio = total ? (up/total) : 0.5;
+      moodBar.style.setProperty('--mood', `${Math.round(greenRatio*100)}%`);
     }
     renderDiag();
   }
