@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; img-src 'self' data:; connect-src https://api.coingecko.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests">
   <title>Gráfico • WallStreetTV</title>
+  <meta name="theme-color" content="#0A0C10" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%23F5C451'/%3E%3Cstop offset='1' stop-color='%230D1117'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect rx='12' ry='12' width='64' height='64' fill='url(%23g)'/%3E%3Cpath d='M14 40h14v6H14zM36 18h14v6H36zM36 40h14v6H36zM14 26h14v6H14z' fill='%23E8ECEF'/%3E%3C/svg%3E" />
+  <link rel="manifest" href="./manifest.webmanifest" crossorigin="use-credentials" />
   <link rel="stylesheet" href="./styles.css" />
   <style>
     .chart-wrap{display:flex; flex-direction:column; gap:12px; padding:16px}

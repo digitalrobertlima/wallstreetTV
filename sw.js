@@ -3,13 +3,18 @@
   - Cache static shell for offline startup
   - SWR (stale-while-revalidate) leve para GET de APIs públicas, com TTL curto
 */
-const VERSION = 'v0.0.9-0';
+const VERSION = 'v0.0.9-1';
 const STATIC_CACHE = `wstv-static-${VERSION}`;
 const STATIC_ASSETS = [
   './', // index.html
   './styles.css',
   './app.js',
-  './manifest.webmanifest'
+  './manifest.webmanifest',
+  './markets.html',
+  './markets.js',
+  './chart.html',
+  './chart.js',
+  './offline.html'
   // Note: icons are data URLs; nothing else to pre-cache
 ];
 const API_TTL_MS = 30 * 1000; // 30s de validade das respostas de API
@@ -68,19 +73,26 @@ self.addEventListener('fetch', (event) => {
   const isSameOrigin = url.origin === self.location.origin;
   const isNavigate = event.request.mode === 'navigate';
   const dest = event.request.destination;
-  // Network-first for navigations and app shell assets, with cache fallback
+  // Network-first for navigations and app shell assets, with cache fallback per-request
   if (isSameOrigin && (isNavigate || dest === 'document')) {
     event.respondWith((async () => {
       const cache = await caches.open(STATIC_CACHE);
       try{
         const preload = event.preloadResponse ? await event.preloadResponse : undefined;
         const netRes = preload || await fetchWithTimeout(event.request, 8000);
-        if(netRes && netRes.ok){ try{ await cache.put('./', netRes.clone()); }catch{} }
+        if(netRes && netRes.ok){
+          try{ await cache.put(event.request, netRes.clone()); }catch{}
+        }
         return netRes;
       }catch{
-        const cached = await cache.match('./');
-        if(cached) return cached;
-        return caches.match('./');
+        // Try exact page cache first, then fall back to index, then to offline page
+        const cachedExact = await cache.match(event.request);
+        if(cachedExact) return cachedExact;
+        const cachedIndex = await cache.match('./');
+        if(cachedIndex) return cachedIndex;
+        const cachedOffline = await cache.match('./offline.html');
+        if(cachedOffline) return cachedOffline;
+        return new Response('<h1>Offline</h1><p>Tente novamente quando a conexão voltar.</p>', { headers: { 'Content-Type':'text/html; charset=utf-8' }, status: 503 });
       }
     })());
     return;
