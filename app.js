@@ -218,6 +218,11 @@
   }
   function blip(dir, intensity){ if(!SOUND.enabled || document.hidden) return; if(!SOUND.ctx || !SOUND.master) return; const now = SOUND.ctx.currentTime; if((now - SOUND._lastAt) < 0.12) return; SOUND._lastAt = now; try{ const osc = SOUND.ctx.createOscillator(); const g = SOUND.ctx.createGain(); osc.type = 'sine'; const clampI = Math.max(0.05, Math.min(3, Number(intensity)||0.2)); const baseUp = 880; const baseDown = 320; const freq = dir==='up' ? baseUp * (1 + 0.25*Math.log2(1+clampI)) : dir==='down' ? baseDown * (1 + 0.25*Math.log2(1+clampI)) : 600; osc.frequency.setValueAtTime(freq, now); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(1.0, now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.13 + 0.03*Math.random()); osc.connect(g); g.connect(SOUND.master); osc.start(now); osc.stop(now + 0.18); }catch{} }
   function chimeError(){ if(!SOUND.enabled || !SOUND.ctx || !SOUND.master) return; const now = SOUND.ctx.currentTime; try{ const o = SOUND.ctx.createOscillator(); const g = SOUND.ctx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(660, now); o.frequency.exponentialRampToValueAtTime(330, now + 0.25); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(1.0, now + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35); o.connect(g); g.connect(SOUND.master); o.start(now); o.stop(now + 0.4); }catch{} }
+  // ===== Notifications (optional) ===========================================
+  const NOTIFY = { enabled:false, lastAt:0, coolMs: 60_000 };
+  try{ NOTIFY.enabled = (localStorage.getItem('wstv_notify')==='on'); }catch{}
+  async function ensureNotify(){ try{ if(!('Notification' in window)) return false; if(Notification.permission==='granted') return true; if(Notification.permission!=='denied'){ const p = await Notification.requestPermission(); return p==='granted'; } }catch{} return false; }
+  function tryNotify(title, body){ const now=Date.now(); if(!NOTIFY.enabled) return; if(document.visibilityState==='visible') return; if((now - NOTIFY.lastAt) < NOTIFY.coolMs) return; try{ new Notification(title, { body }); NOTIFY.lastAt = now; }catch{} }
   if(soundBtn){ soundBtn.addEventListener('click', async ()=>{ await ensureAudio(); toggleSound(); }); }
 
   // Mostrar badge PWA somente quando de fato em modo instalado/standalone (robusto)
@@ -528,7 +533,19 @@
       }catch{}
       await sleep(120);
     }
-    if(all.length){ NEWS.items = all; NEWS.lastAt = Date.now(); NEWS.idx = 0; }
+    if(all.length){
+      // dedupe/cluster por similaridade simples (Jaccard de tokens)
+      const uniq=[];
+      function tokens(s){ return String(s||'').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,'').split(/\s+/).filter(Boolean); }
+      function sim(a,b){ const A=new Set(tokens(a)), B=new Set(tokens(b)); const inter=[...A].filter(x=>B.has(x)).length; const uni=new Set([...A,...B]).size; return uni? inter/uni : 0; }
+      for(const it of all){
+        const dupe = uniq.find(u => u.lang===it.lang && sim(u.title,it.title) > 0.82);
+        if(!dupe) uniq.push(it);
+      }
+      // 1-liner resumo local: pega sentença principal curta
+      uniq.forEach(u=>{ try{ const m = String(u.title).split(/[:;\-–\.|\!\?]/)[0]; u.one = (m && m.length>8)? m.trim() : u.title; }catch{ u.one = u.title; } });
+      NEWS.items = uniq; NEWS.lastAt = Date.now(); NEWS.idx = 0;
+    }
   }
 
   // Alternância USDT: 35s normal, 35s manchete; se "só manchetes" estiver ativo, fixa news-mode e gira headlines a cada 1 minuto
@@ -934,10 +951,10 @@
             i1S.textContent = '—'; i1T.textContent = '—';
             i2S.textContent = '—'; i2T.textContent = '—';
           } else {
-            const set = (S,T,it) => {
+      const set = (S,T,it) => {
               if(!it){ S.textContent='—'; T.textContent='—'; T.className = 'title'; }
               else {
-                S.textContent=it.source; T.textContent=it.title;
+        S.textContent=it.source; T.textContent=it.one || it.title;
                 const sc = scoreSentiment(it.title);
                 T.className = 'title ' + (sc>0? 'sent-up' : sc<0? 'sent-down' : '');
               }
@@ -965,7 +982,7 @@
         const tile = tiles[k];
         if(tile){
           tile.classList.remove('swing-up','swing-down');
-          if(Math.abs(z) > 2){ tile.classList.add(z>0? 'swing-up':'swing-down'); if(canPlay(k)) blip(z>0?'up':'down', Math.min(3, Math.abs(z))); }
+          if(Math.abs(z) > 2){ tile.classList.add(z>0? 'swing-up':'swing-down'); if(canPlay(k)) blip(z>0?'up':'down', Math.min(3, Math.abs(z))); tryNotify(`${c.symbol}: movimento forte`, `${z>0? 'Alta' : 'Queda'} atípica detectada`); }
         }
       }
       // continuous blink on main price using sticky direction
