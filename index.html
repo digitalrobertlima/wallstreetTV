@@ -232,6 +232,9 @@
   const tiles = {};
   // memória do último preço exibido na fita por par para disparar pulse sutil
   const TAPE_LAST = Object.create(null);
+  // controle da fita para evitar 'pulos' ao re-renderizar
+  let TAPE_LAST_HTML = '';
+  let TAPE_START_TS = performance.now();
   // tempo e clima
   const WEATHER_CITIES = [
     { key:'BSB', name:'Brasília',       lat:-15.7939, lon:-47.8828 },
@@ -496,8 +499,15 @@
       return `<span class="tick"><span class="sym">${c.symbol}</span><span class="pri blink ${blinkCls}">${price}</span><span class="sig ${cls}">${d>0?'▲':d<0?'▼':'•'}</span></span>`;
     });
     const html = items.join('<span class="sep">·</span>');
-    // Preenche duas execuções para loop contínuo
-    if(tapeA && tapeB){ tapeA.innerHTML = html; tapeB.innerHTML = html; }
+    // Preenche duas execuções para loop contínuo, evitando updates desnecessários (que reiniciam a animação)
+    if(tapeA && tapeB){
+      if(html !== TAPE_LAST_HTML){
+        tapeA.innerHTML = html; tapeB.innerHTML = html;
+        TAPE_LAST_HTML = html;
+        // manter fase da animação (defasagem negativa conforme tempo decorrido)
+        tuneTickerSpeed(true);
+      }
+    }
 
     // tiles
     for(const c of COINS){
@@ -665,6 +675,11 @@
   }
   // kick
   runCycle();
+  // inicializa fase da animação da fita
+  requestAnimationFrame(()=>{
+    TAPE_START_TS = performance.now();
+    tuneTickerSpeed(true);
+  });
   // relógio de Brasília atualizado a cada segundo
   const brFmt = new Intl.DateTimeFormat('pt-BR', { timeZone:'America/Sao_Paulo', hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
   function tickClock(){ if(brClock) brClock.textContent = `Brasília: ${brFmt.format(new Date())}`; }
@@ -713,13 +728,20 @@
   });
 
   // ===== TICKER SPEED ADAPTATION ===========================================
-  function tuneTickerSpeed(){
+  function tuneTickerSpeed(forcePhase=false){
     if(!tapeTrack || !tapeA) return;
     const total = tapeA.scrollWidth; // one run
     // target ~110px/s for readability
     const pxPerSec = 110;
     const seconds = Math.max(20, Math.min(90, total / pxPerSec));
+    const prev = getComputedStyle(tapeTrack).getPropertyValue('--tape-speed').trim();
     tapeTrack.style.setProperty('--tape-speed', seconds + 's');
+    // preservar a fase da animação ao mudar duração ou conteúdo
+    if(forcePhase || (prev !== (seconds + 's'))){
+      const elapsed = (performance.now() - TAPE_START_TS) / 1000;
+      const phase = (elapsed % seconds).toFixed(3);
+      tapeTrack.style.animationDelay = `-${phase}s`;
+    }
   }
   const roTicker = new ResizeObserver(()=> tuneTickerSpeed());
   if(tapeTrack) roTicker.observe(tapeTrack);
