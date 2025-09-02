@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = 'v0.0.7';
+  const APP_VERSION = 'v0.0.8';
   // ===== CONFIG ==============================================================
   const REFRESH_MS = 35_000; // 35 segundos
   const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
