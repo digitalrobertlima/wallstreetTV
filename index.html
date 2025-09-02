@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>MESA • WallStreetTV Crypto — BitPreço</title>
   <meta name="description" content="Painel estilo TV de Wall Street para BTC, ETH e BNB (pares BRL) usando API pública da BitPreço. Single-file • Vanilla JS" />
+  <meta name="theme-color" content="#0A0C10" />
+  <meta name="robots" content="index,follow" />
+  <meta property="og:title" content="MESA • WallStreetTV Crypto — BitPreço" />
+  <meta property="og:description" content="Painel estilo TV para cripto (BRL) com dados em tempo real da BitPreço, visual limpo e responsivo." />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="pt_BR" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%23F5C451'/%3E%3Cstop offset='1' stop-color='%230D1117'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect rx='12' ry='12' width='64' height='64' fill='url(%23g)'/%3E%3Cpath d='M14 40h14v6H14zM36 18h14v6H36zM36 40h14v6H36zM14 26h14v6H14z' fill='%23E8ECEF'/%3E%3C/svg%3E" />
   <style>
     :root{
       --bg:#0A0C10;          /* fundo dark cinematográfico */
@@ -22,6 +29,7 @@
       margin:0; background:var(--bg); color:var(--ink);
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
       display:flex; flex-direction:column; min-height:100vh;
+      font-variant-numeric: tabular-nums; text-rendering: optimizeLegibility;
     }
   /* esconder barras de rolagem horizontais e minimizar verticais */
   html{scrollbar-width: none}         /* Firefox */
@@ -44,6 +52,10 @@
     .brand h1{font-size: clamp(16px, 2.4vw, 22px); margin:0; letter-spacing:.5px}
     .sub{color:var(--muted); font-size: clamp(11px, 1.4vw, 13px)}
   .controls{display:flex; gap:10px; align-items:center}
+  .net{display:inline-flex; align-items:center; gap:8px}
+  .dot{width:10px; height:10px; border-radius:999px; background:#8892a6; box-shadow:0 0 0 1px rgba(255,255,255,.15) inset}
+  .dot.ok{background:#00C853}
+  .dot.err{background:#FF3B30}
   .version{padding:6px 10px; border-radius:999px; background:#0d121a; color:#cbd5e1; font-size:12px; font-weight:700; letter-spacing:.4px}
     button{all:unset; cursor:pointer; padding:10px 14px; border-radius:12px; background:#1a202c; color:#e6e6e6; font-weight:600}
     button:hover{background:#232b3a}
@@ -114,7 +126,8 @@
     @keyframes blinkDown{0%,100%{background:transparent}50%{background:rgba(255,59,48,.18)}}
     @keyframes blinkFlat{0%,100%{background:transparent}50%{background:rgba(255,255,255,.08)}}
     @media (prefers-reduced-motion: reduce){
-      .pri.blink.up,.pri.blink.down,.pri.blink.flat{animation:none}
+  .pri.blink.up,.pri.blink.down,.pri.blink.flat{animation:none}
+  .tape-track{animation:none !important}
     }
     .sig.up{color:var(--up)}
     .sig.down{color:var(--down)}
@@ -134,9 +147,12 @@
       </div>
     </div>
     <div class="controls">
+  <div class="net" title="Status da conexão">
+    <span class="dot" id="netDot" aria-hidden="true"></span>
+  </div>
   <div class="version" id="versionBadge">v0.0.6</div>
   <div class="sub">Última atualização: <strong id="lastUpdate">—</strong></div>
-      <button id="fullscreenBtn" title="Ativar/Desativar tela cheia (F)">Tela cheia ⤢</button>
+      <button id="fullscreenBtn" title="Ativar/Desativar tela cheia (F)" aria-pressed="false" accesskey="f">Tela cheia ⤢</button>
     </div>
   </header>
 
@@ -215,6 +231,9 @@
   alt:{ last:null, bid:null, ask:null, at:null }, // dados alternativos (Binance/sintético)
     _histAt:null, // controle de frequência de pontos no spark
   }]));
+  ;
+  // Flag de status de rede agregado por ciclo
+  let NET_ERR = false;
 
   // ===== DOM BUILD ===========================================================
   const grid = document.getElementById('grid');
@@ -295,7 +314,7 @@
           <div class="pair">${c.label}</div>
         </div>
         <div class="row" style="gap:10px; align-items:flex-end">
-          <div class="price" id="p-${c.pair}">—</div>
+          <div class="price" id="p-${c.pair}" aria-live="polite" aria-atomic="true" aria-label="Preço atual">—</div>
           <div class="delta" id="d-${c.pair}">—</div>
         </div>
       </div>
@@ -368,9 +387,10 @@
       }
     } catch(err){
       console.error('tickers/all falhou:', err);
+      NET_ERR = true;
       // fallback total
       await Promise.all(COINS.map(async c => {
-        try{ applyTicker(c.pair, await getJSON(ENDPOINTS.TICKER(c.pair))); }catch(e){ console.error('ticker falhou', c.pair, e); }
+        try{ applyTicker(c.pair, await getJSON(ENDPOINTS.TICKER(c.pair))); }catch(e){ console.error('ticker falhou', c.pair, e); NET_ERR = true; }
       }));
     }
   }
@@ -417,14 +437,14 @@
           const bid = bestBid ? Number(bestBid.price ?? bestBid[1] ?? bestBid) : null;
           const ask = bestAsk ? Number(bestAsk.price ?? bestAsk[1] ?? bestAsk) : null;
           S[pair].bid = bid; S[pair].ask = ask; S[pair].spread = (bid && ask) ? (ask - bid) : null;
-        }catch(e){ console.error('orderbook falhou', pair, e); }
+        }catch(e){ console.error('orderbook falhou', pair, e); NET_ERR = true; }
         if(shouldFetchTrades){
           try{
             const tr = await getJSON(ENDPOINTS.TRADES(pair));
             // escolher a negociação mais recente
             const last = Array.isArray(tr) && tr.length ? tr.reduce((a,b)=> new Date(b.timestamp) > new Date(a.timestamp) ? b : a) : null;
             S[pair].trade = last || null;
-          }catch(e){ console.error('trades falhou', pair, e); }
+          }catch(e){ console.error('trades falhou', pair, e); NET_ERR = true; }
         }
       }));
       await sleep(200); // pequeno intervalo entre lotes
@@ -649,6 +669,7 @@
   function setText(id, txt){ const el = document.getElementById(id); if(el) el.textContent = txt; }
   function setDelta(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent=txt; el.className = `delta ${cls}`; }
   function setPill(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent = txt; el.className = `pill ${cls}`; }
+  function setNet(ok){ const d = document.getElementById('netDot'); if(!d) return; d.className = `dot ${ok? 'ok':'err'}`; d.title = ok? 'Conexão OK' : 'Falha de rede parcial'; }
 
   function humanTime(ts){
     const t = new Date(ts);
@@ -702,10 +723,12 @@
 
   // ===== LOOP ================================================================
   async function cycle(){
+    NET_ERR = false;
     await fetchTickers();
     await fetchOrderbookAndTrades();
     render();
     lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  setNet(!NET_ERR);
   cycleCount++;
   // sem ajuste forçado da fita aqui; só quando a largura mudar
   }
@@ -835,12 +858,24 @@
       (document.webkitExitFullscreen && document.webkitExitFullscreen());
     }
   }
+  function updateFsBtn(){ const p = !!document.fullscreenElement; fsBtn.setAttribute('aria-pressed', String(p)); fsBtn.textContent = p ? 'Sair da tela cheia ⤢' : 'Tela cheia ⤢'; }
+  document.addEventListener('fullscreenchange', updateFsBtn);
+  updateFsBtn();
 
   // ===== RESIZE SPARKLINES ON LAYOUT CHANGES ================================
   const ro = new ResizeObserver(()=> render());
   ro.observe(grid);
+  // Capturar erros não tratados para refletir no status (sem travar UI)
+  window.addEventListener('unhandledrejection', ()=>{ NET_ERR = true; setNet(false); });
+  window.addEventListener('error', ()=>{ /* não marca automaticamente; muitos são benignos */ });
 })();
 </script>
+
+<noscript>
+  <div style="padding:12px; background:#1a202c; color:#e8e6e3; text-align:center;">
+    Este painel requer JavaScript habilitado para funcionar corretamente.
+  </div>
+</noscript>
 
 <!--
 Referências de API (BitPreço):
