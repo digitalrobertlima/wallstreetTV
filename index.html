@@ -681,8 +681,7 @@
     render();
     lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   cycleCount++;
-  // ajustar velocidade da fita após render
-  tuneTickerSpeed();
+  // sem ajuste forçado da fita aqui; só quando a largura mudar
   }
 
   // ===== SCHEDULER: evita sobreposição e ajusta conforme visibilidade =======
@@ -754,7 +753,10 @@
   document.addEventListener('visibilitychange', () => {
     // Recalcular frequência de trades quando voltar a ficar visível
     if(!document.hidden){ FETCH_TRADES_EVERY = computeTradesEvery(REFRESH_MS); }
-    scheduleNext(250);
+  // pausar fita durante mudança de visibilidade e retomar suavemente
+  pauseTape();
+  scheduleNext(250);
+  setTimeout(()=>{ tuneTickerSpeed(true); }, 150);
   });
 
   // ===== TICKER SPEED ADAPTATION ===========================================
@@ -763,7 +765,10 @@
   function resumeTape(){ if(tapeTrack) tapeTrack.style.animationPlayState = 'running'; }
   function tuneTickerSpeed(forcePhase=false){
     if(!tapeTrack || !tapeA) return;
-    const total = tapeA.scrollWidth; // largura de uma corrida
+    const style = getComputedStyle(tapeTrack);
+    const gapPx = parseFloat(style.columnGap || style.gap || '64') || 64;
+    const runW = tapeA.scrollWidth; // largura de uma corrida
+    const total = runW + gapPx; // distância exata a percorrer
     // target ~110px/s for readability
     const pxPerSec = 110;
     const seconds = Math.max(20, Math.min(90, total / pxPerSec));
@@ -771,7 +776,9 @@
     tapeTrack.style.setProperty('--tape-speed', seconds + 's');
     tapeTrack.style.setProperty('--tape-distance', total + 'px');
     // preservar a fase da animação ao mudar duração ou conteúdo
-    if(forcePhase || (prev !== (seconds + 's'))){
+  const prevDist = parseFloat(style.getPropertyValue('--tape-distance') || '0');
+  const distChanged = Math.abs(prevDist - total) > 1;
+  if(forcePhase || (prev !== (seconds + 's')) || distChanged){
       const elapsed = (performance.now() - TAPE_START_TS) / 1000;
       const phase = (elapsed % seconds).toFixed(3);
       tapeTrack.style.animationDelay = `-${phase}s`;
