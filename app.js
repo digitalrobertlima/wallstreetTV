@@ -5,6 +5,9 @@
   const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
   const MAX_POINTS = 360;    // ~3.5h de histórico
   const TARGET_MAX_REQ_PER_MIN = 28; // margem de segurança sob 30/min
+  // Janelas do gráfico (aprox.; 24h exibirá o máximo disponível)
+  const RANGE_MS = { '1h': 1*60*60*1000, '4h': 4*60*60*1000, '24h': 24*60*60*1000 };
+  let RANGE_CUR = (()=>{ try{ return localStorage.getItem('wstv_range') || '1h'; }catch{ return '1h'; } })();
   const COINS = [
     { symbol: 'BTC', pair: 'btc-brl', label: 'BTC/BRL' },
     { symbol: 'ETH', pair: 'eth-brl', label: 'ETH/BRL' },
@@ -69,7 +72,7 @@
   const S = Object.fromEntries(COINS.map(c => [c.pair, {
     last:null, prev:null, high:null, low:null, vol:null, var:null,
     bid:null, ask:null, spread:null,
-    trade:null, history:[], lastAt:null,
+  trade:null, history:[], histTS:[], lastAt:null,
     alt:{ last:null, bid:null, ask:null, at:null }, // Binance
     cg:{ last:null, at:null },                      // CoinGecko
     bs:{ last:null, bid:null, ask:null, at:null },  // Bitstamp (USD->BRL)
@@ -104,6 +107,10 @@
   const moodBar = document.getElementById('moodBar');
   const soundBtn = document.getElementById('soundBtn');
   const intensityInput = document.getElementById('intensity');
+  const rg1 = document.getElementById('rg-1h');
+  const rg4 = document.getElementById('rg-4h');
+  const rg24 = document.getElementById('rg-24h');
+  const chartTip = document.getElementById('chartTip');
   // Install banner elements
   const installBanner = document.getElementById('installBanner');
   const ibInstall = document.getElementById('ibInstall');
@@ -457,8 +464,8 @@
   function maybePushHistory(st, price){
     const now = Date.now(); const MIN_GAP = 10_000;
     if(st._histAt && (now - st._histAt) < MIN_GAP) return;
-    st._histAt = now; st.history.push(price);
-    if(st.history.length > MAX_POINTS) st.history.shift();
+  st._histAt = now; st.history.push(price); st.histTS.push(now);
+  if(st.history.length > MAX_POINTS){ st.history.shift(); st.histTS.shift(); }
   }
 
   let cycleCount = 0; let FETCH_TRADES_EVERY = computeTradesEvery(REFRESH_MS);
@@ -691,7 +698,7 @@
     if(remMs < GUARD_MS){ if(!_tapeUpdateTimer){ _tapeUpdateTimer = setTimeout(safeUpdate, Math.max(30, remMs + 30)); } } else { updateTape(); }
     for(const c of COINS){
       const k = c.pair, st = S[k];
-  const dispPrice = choosePrice(st);
+      const dispPrice = choosePrice(st);
       // Atualiza direção de cor com base no preço exibido (sticky até mudar)
       const prevShown = st._dispLast;
       if(Number.isFinite(dispPrice)){
@@ -723,11 +730,21 @@
   const md = document.getElementById(`md-${k}`);
   if(md){ md.classList.remove('ping'); void md.offsetWidth; md.classList.add('ping'); }
       }
-      let deltaStr = '—', cls = '';
-      if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
-        const delta = st.last - st.prev; const perc = st.prev ? (delta/st.prev*100) : 0; deltaStr = `${delta>=0?'+':''}${perc.toFixed(2)}%`; cls = delta>0 ? 'up' : delta<0 ? 'down' : '';
+      // Indicadores rápidos baseados na janela selecionada
+      const { seriesF } = filterWindow(st);
+      let dStr = '—', dCls = '';
+      if(seriesF.length >= 2){
+        const a = seriesF[0], b = seriesF[seriesF.length-1];
+        const d = b - a; const pct = a ? (d/a*100) : 0;
+        let sigma = 0;
+        if(seriesF.length >= 3){
+          const rets = []; for(let i=1;i<seriesF.length;i++){ const r = seriesF[i-1] ? ((seriesF[i]-seriesF[i-1])/seriesF[i-1]) : 0; if(Number.isFinite(r)) rets.push(r); }
+          if(rets.length){ const m = rets.reduce((x,y)=>x+y,0)/rets.length; const v = rets.reduce((acc,v)=> acc + (v-m)*(v-m), 0) / rets.length; sigma = Math.sqrt(v) * 100; }
+        }
+        dStr = `${pct>=0?'+':''}${pct.toFixed(2)}% • σ ${sigma.toFixed(2)}%`;
+        dCls = pct>0 ? 'up' : pct<0 ? 'down' : '';
       }
-      setDelta(`d-${k}`, deltaStr, cls);
+      setDelta(`d-${k}`, dStr, dCls);
   const stats = chooseStats(st);
   setText(`hi-${k}`, Number.isFinite(stats.hi) ? fmtBRL.format(stats.hi) : '—');
   setText(`lo-${k}`, Number.isFinite(stats.lo) ? fmtBRL.format(stats.lo) : '—');
@@ -743,7 +760,7 @@
       setText(`ta-${k}`, tr?.amount != null ? `${fmtNum.format(Number(tr.amount))}` : '—');
       setText(`tp-${k}`, tr?.price  != null ? fmtBRL.format(Number(tr.price)) : '—');
       setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
-      drawSpark(`sp-${k}`, st.history);
+  drawSpark(`sp-${k}`, seriesF, st.histTS);
     }
     // Atualiza barra de humor do mercado (proporção verde x vermelho)
     if(moodBar){
@@ -826,7 +843,7 @@
   function setPill(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent = txt; el.className = `pill ${cls}`; }
   function setNet(ok){ const d = document.getElementById('netDot'); if(!d) return; d.className = `dot ${ok? 'ok':'err'}`; d.title = ok? 'Conexão OK' : 'Falha de rede parcial'; }
   function humanTime(ts){ const t = new Date(ts); if(isNaN(+t)) return String(ts); const diff = (Date.now()-t.getTime())/1000; if(diff < 60) return `${Math.floor(diff)}s atrás`; if(diff < 3600) return `${Math.floor(diff/60)}min atrás`; const d = t.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); return d; }
-  function drawSpark(id, series){
+  function drawSpark(id, series, ts){
     const el = document.getElementById(id); if(!el) return;
     const ctx = el.getContext('2d'); const dpr = window.devicePixelRatio || 1;
     if(el._dpr !== dpr){ el._dpr = dpr; el.width = Math.floor(el.clientWidth*dpr); el.height = Math.floor(el.clientHeight*dpr); }
@@ -884,6 +901,41 @@
     ctx.strokeStyle = 'rgba(148,163,184,.6)'; ctx.lineWidth = 2; // slate
     ctx.beginPath(); ctx.moveTo(W-5*dpr, yHi); ctx.lineTo(W, yHi); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(W-5*dpr, yLo); ctx.lineTo(W, yLo); ctx.stroke();
+
+    // Dados para tooltip
+    el._spark = { series: [...series], min, max, padX, padY, W, H };
+    if(!el._tipWired){
+      el._tipWired = true;
+      const onMove = (ev)=>{
+        if(!chartTip || !el._spark) return;
+        const rect = el.getBoundingClientRect();
+        const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
+        const s = el._spark; const n = s.series.length; if(n<2) return;
+        const rx = Math.max(s.padX, Math.min(s.W - s.padX, x));
+        const t = (rx - s.padX) / Math.max(1, (s.W - 2*s.padX));
+        const idx = Math.max(0, Math.min(n-1, Math.round(t * (n-1))));
+        const v = s.series[idx]; if(!Number.isFinite(v)) return;
+        const base = s.series[0]; const pct = base ? ((v-base)/base*100) : 0;
+        chartTip.textContent = `${fmtBRL.format(v)} • ${pct>=0?'+':''}${pct.toFixed(2)}%`;
+        chartTip.hidden = false;
+        const pageX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+        const pageY = (ev.touches ? ev.touches[0].clientY : ev.clientY);
+        const tipRect = chartTip.getBoundingClientRect();
+        const off = 10;
+        let tx = pageX + off; let ty = pageY + off;
+        if((tx + tipRect.width) > window.innerWidth - 6) tx = pageX - tipRect.width - off;
+        if((ty + tipRect.height) > window.innerHeight - 6) ty = pageY - tipRect.height - off;
+        chartTip.style.left = `${Math.max(6, tx)}px`;
+        chartTip.style.top = `${Math.max(6, ty)}px`;
+      };
+      const onLeave = ()=>{ if(chartTip) chartTip.hidden = true; };
+      el.addEventListener('mousemove', onMove);
+      el.addEventListener('touchstart', onMove, { passive:true });
+      el.addEventListener('touchmove', onMove, { passive:true });
+      el.addEventListener('mouseleave', onLeave);
+      el.addEventListener('touchend', onLeave);
+      el.addEventListener('touchcancel', onLeave);
+    }
   }
 
   // ===== Loop ================================================================
@@ -941,6 +993,37 @@
   function renderDiag(){ if(diagLatency) diagLatency.textContent = LAT.avg ? `${Math.round(LAT.avg)} ms` : '—'; if(diagErrors) diagErrors.textContent = String(ERR_COUNT); if(diagLastErr) diagLastErr.textContent = LAST_ERR || '—'; }
   function toggleDiag(){ const vis = diagBox.hasAttribute('hidden'); if(vis) diagBox.removeAttribute('hidden'); else diagBox.setAttribute('hidden',''); }
   if(diagBtn) diagBtn.addEventListener('click', toggleDiag); if(diagClose) diagClose.addEventListener('click', toggleDiag); renderDiag();
+
+  // ===== Range selector & window filter ====================================
+  function filterWindow(st){
+    const all = st.history || []; const ts = st.histTS || [];
+    if(!all.length) return { seriesF: [], tsF: [] };
+    const now = Date.now(); const win = RANGE_MS[RANGE_CUR] || RANGE_MS['1h'];
+    let startIdx = 0;
+    if(ts.length === all.length && ts.length){
+      for(let i=ts.length-1;i>=0;i--){ if((now - ts[i]) <= win){ startIdx = i; while(startIdx>0 && (now - ts[startIdx-1]) <= win) startIdx--; break; } }
+    } else {
+      const approx = Math.max(2, Math.floor(win / 35_000)); startIdx = Math.max(0, all.length - approx);
+    }
+    const seriesF = all.slice(startIdx);
+    const tsF = ts.length ? ts.slice(startIdx) : [];
+    return { seriesF, tsF };
+  }
+  function updateRangeUI(){ try{
+    const r1 = document.getElementById('rg-1h'); const r4 = document.getElementById('rg-4h'); const r24 = document.getElementById('rg-24h');
+    if(r1) r1.setAttribute('aria-pressed', String(RANGE_CUR==='1h'));
+    if(r4) r4.setAttribute('aria-pressed', String(RANGE_CUR==='4h'));
+    if(r24) r24.setAttribute('aria-pressed', String(RANGE_CUR==='24h'));
+  }catch{} }
+  function setRange(key){ if(!(key in RANGE_MS)) return; RANGE_CUR = key; try{ localStorage.setItem('wstv_range', key); }catch{} updateRangeUI(); render(); }
+  function wireRange(){
+    const r1 = document.getElementById('rg-1h'); const r4 = document.getElementById('rg-4h'); const r24 = document.getElementById('rg-24h');
+    if(r1) r1.addEventListener('click', ()=> setRange('1h'));
+    if(r4) r4.addEventListener('click', ()=> setRange('4h'));
+    if(r24) r24.addEventListener('click', ()=> setRange('24h'));
+    updateRangeUI();
+  }
+  wireRange();
 
   // ===== SW registro =========================================================
   if('serviceWorker' in navigator){
