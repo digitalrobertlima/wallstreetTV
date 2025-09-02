@@ -43,7 +43,8 @@
     }
     .brand h1{font-size: clamp(16px, 2.4vw, 22px); margin:0; letter-spacing:.5px}
     .sub{color:var(--muted); font-size: clamp(11px, 1.4vw, 13px)}
-    .controls{display:flex; gap:10px; align-items:center}
+  .controls{display:flex; gap:10px; align-items:center}
+  .version{padding:6px 10px; border-radius:999px; background:#0d121a; color:#cbd5e1; font-size:12px; font-weight:700; letter-spacing:.4px}
     button{all:unset; cursor:pointer; padding:10px 14px; border-radius:12px; background:#1a202c; color:#e6e6e6; font-weight:600}
     button:hover{background:#232b3a}
     .grid{
@@ -118,7 +119,8 @@
       </div>
     </div>
     <div class="controls">
-      <div class="sub">Última atualização: <strong id="lastUpdate">—</strong></div>
+  <div class="version" id="versionBadge">v0.0.4</div>
+  <div class="sub">Última atualização: <strong id="lastUpdate">—</strong></div>
       <button id="fullscreenBtn" title="Ativar/Desativar tela cheia (F)">Tela cheia ⤢</button>
     </div>
   </header>
@@ -138,6 +140,7 @@
 
 <script>
 (() => {
+  const APP_VERSION = 'v0.0.4';
   // ===== CONFIG ==============================================================
   const REFRESH_MS = 35_000; // 35 segundos
   const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
@@ -192,12 +195,14 @@
 
   // ===== DOM BUILD ===========================================================
   const grid = document.getElementById('grid');
+  const versionBadge = document.getElementById('versionBadge');
   const tapeTrack = document.getElementById('tapeTrack');
   const tapeA = document.getElementById('tapeA');
   const tapeB = document.getElementById('tapeB');
   const lastUpdate = document.getElementById('lastUpdate');
   const intervalText = document.getElementById('intervalText');
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
+  if(versionBadge) versionBadge.textContent = APP_VERSION;
 
   const tiles = {};
   COINS.forEach(c => {
