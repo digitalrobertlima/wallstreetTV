@@ -3,7 +3,7 @@
   - Cache static shell for offline startup
   - SWR (stale-while-revalidate) leve para GET de APIs públicas, com TTL curto
 */
-const VERSION = 'v0.0.8-1';
+const VERSION = 'v0.0.8-2';
 const STATIC_CACHE = `wstv-static-${VERSION}`;
 const STATIC_ASSETS = [
   './', // index.html
@@ -17,7 +17,7 @@ const API_CACHE = `wstv-api-${VERSION}`;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting())
+  caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
   );
 });
 

@@ -207,7 +207,12 @@
   });
   window.addEventListener('appinstalled', ()=>{ try{ localStorage.setItem(LS_KEYS.installed,'1'); }catch{} hideInstallBanner(); });
   // Se o navegador não disparar beforeinstallprompt (ex: iOS), ainda assim ofereça se não instalado
-  document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(()=>{ if(shouldShowInstallBanner()) showInstallBanner(); }, 1500); });
+  document.addEventListener('DOMContentLoaded', ()=>{
+    setTimeout(()=>{
+      // Se não houver deferredPrompt, ainda assim ofereça o banner com instruções (iOS/desktop)
+      if(shouldShowInstallBanner()) showInstallBanner();
+    }, 1200);
+  });
 
   if(ibInstall){ ibInstall.addEventListener('click', async ()=>{
     if(deferredPrompt && deferredPrompt.prompt){ try{ deferredPrompt.prompt(); const choice = await deferredPrompt.userChoice; if(choice && choice.outcome === 'accepted'){ hideInstallBanner(); try{ localStorage.setItem(LS_KEYS.installed,'1'); }catch{} } else { markSnooze(); hideInstallBanner(); } }catch{ markSnooze(); hideInstallBanner(); } finally { deferredPrompt = null; } }
