@@ -69,6 +69,29 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-install-snooze-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"fix(pwa): show install banner without auto-snooze; only snooze on dismiss/decline",
+				"&&",
+				"git",
+				"push"
+			],
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

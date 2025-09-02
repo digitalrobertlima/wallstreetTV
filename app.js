@@ -172,7 +172,7 @@
     return (now - snoozeAt) >= oneHour;
   }
   function markSnooze(){ try{ localStorage.setItem(LS_KEYS.snoozeAt, String(Date.now())); }catch{} }
-  function showInstallBanner(){ if(!installBanner) return; installBanner.hidden = false; markSnooze(); }
+  function showInstallBanner(){ if(!installBanner) return; installBanner.hidden = false; }
   function hideInstallBanner(){ if(!installBanner) return; installBanner.hidden = true; }
 
   window.addEventListener('beforeinstallprompt', (e)=>{
