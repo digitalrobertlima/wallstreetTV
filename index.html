@@ -139,7 +139,7 @@
   <main class="grid" id="grid"></main>
 
   <footer>
-    <div class="sub">Uso educativo / visual. Não é recomendação de investimento.</div>
+  <div class="sub"><span id="brClock" title="Horário de Brasília">Brasília: --:--:--</span></div>
     <div class="marquee" aria-hidden="true">
       <div class="tape-track" id="tapeTrack">
         <span class="run" id="tapeA"></span>
@@ -175,6 +175,10 @@
     TICKER:      (pair) => `https://api.bitpreco.com/${pair}/ticker`,
     ORDERBOOK:   (pair) => `https://api.bitpreco.com/${pair}/orderbook`,
     TRADES:      (pair) => `https://api.bitpreco.com/${pair}/trades`,
+  };
+  // Open-Meteo (sem API key) — temperatura atual por cidade
+  const ENDPOINTS_WEATHER = {
+    CURRENT: (lat, lon) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=America%2FSao_Paulo`,
   };
   // Binance (Spot) — públicos
   const ENDPOINTS_BINANCE = {
@@ -213,12 +217,28 @@
   const tapeB = document.getElementById('tapeB');
   const lastUpdate = document.getElementById('lastUpdate');
   const intervalText = document.getElementById('intervalText');
+  const brClock = document.getElementById('brClock');
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
   if(versionBadge) versionBadge.textContent = APP_VERSION;
 
   const tiles = {};
   // memória do último preço exibido na fita por par para disparar pulse sutil
   const TAPE_LAST = Object.create(null);
+  // tempo e clima
+  const WEATHER_CITIES = [
+    { key:'BSB', name:'Brasília',       lat:-15.7939, lon:-47.8828 },
+    { key:'SP',  name:'São Paulo',      lat:-23.5505, lon:-46.6333 },
+    { key:'RIO', name:'Rio de Janeiro', lat:-22.9068, lon:-43.1729 },
+    { key:'BH',  name:'Belo Horizonte', lat:-19.9167, lon:-43.9345 },
+    { key:'SSA', name:'Salvador',       lat:-12.9777, lon:-38.5016 },
+    { key:'FOR', name:'Fortaleza',      lat:-3.7319,  lon:-38.5267 },
+    { key:'REC', name:'Recife',         lat:-8.0476,  lon:-34.8770 },
+    { key:'CTA', name:'Curitiba',       lat:-25.4284, lon:-49.2733 },
+    { key:'POA', name:'Porto Alegre',   lat:-30.0346, lon:-51.2177 },
+    { key:'MAO', name:'Manaus',         lat:-3.1190,  lon:-60.0217 },
+  ];
+  const WEATHER_REFRESH_MS = 10*60*1000; // a cada 10 minutos
+  const WEA = Object.fromEntries(WEATHER_CITIES.map(c=>[c.key,{temp:null, at:0}]));
   COINS.forEach(c => {
     const tile = document.createElement('section');
     tile.className = 'tile';
@@ -467,7 +487,15 @@
       if(Number.isFinite(priceNum)) TAPE_LAST[c.pair] = priceNum;
       return `<span class="tick"><span class="sym">${c.symbol}</span><span class="pri blink ${blinkCls}">${price}</span><span class="sig ${cls}">${d>0?'▲':d<0?'▼':'•'}</span></span>`;
     });
-    const html = items.join('<span class="sep">·</span>');
+    // adicionar temperaturas das capitais (sem blink)
+    const wx = WEATHER_CITIES.map(c => {
+      const rec = WEA[c.key];
+      const t = Number(rec?.temp);
+      const tStr = Number.isFinite(t) ? `${Math.round(t)}°C` : '—°C';
+      return `<span class="tick wx"><span class="sym">${c.key}</span><span class="pri">${tStr}</span></span>`;
+    });
+    const allItems = wx.concat(items); // clima primeiro, depois cripto
+    const html = allItems.join('<span class="sep">·</span>');
     // Preenche duas execuções para loop contínuo
     if(tapeA && tapeB){ tapeA.innerHTML = html; tapeB.innerHTML = html; }
 
@@ -637,6 +665,33 @@
   }
   // kick
   runCycle();
+  // relógio de Brasília atualizado a cada segundo
+  const brFmt = new Intl.DateTimeFormat('pt-BR', { timeZone:'America/Sao_Paulo', hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  function tickClock(){ if(brClock) brClock.textContent = `Brasília: ${brFmt.format(new Date())}`; }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // clima: busca inicial e atualizações periódicas leves
+  async function fetchWeatherAll(){
+    const BATCH = 3;
+    for(let i=0;i<WEATHER_CITIES.length;i+=BATCH){
+      const batch = WEATHER_CITIES.slice(i, i+BATCH);
+      await Promise.all(batch.map(async c => {
+        try{
+          const data = await getJSON(ENDPOINTS_WEATHER.CURRENT(c.lat, c.lon));
+          const temp = Number(data?.current_weather?.temperature);
+          if(Number.isFinite(temp)){
+            WEA[c.key].temp = temp; WEA[c.key].at = Date.now();
+          }
+        }catch(e){ /* ignora falhas individuais */ }
+      }));
+      await sleep(200);
+    }
+  render(); // reflete temperaturas na fita
+  tuneTickerSpeed();
+  }
+  fetchWeatherAll();
+  setInterval(fetchWeatherAll, WEATHER_REFRESH_MS);
   document.addEventListener('visibilitychange', () => {
     // Recalcular frequência de trades quando voltar a ficar visível
     if(!document.hidden){ FETCH_TRADES_EVERY = computeTradesEvery(REFRESH_MS); }
