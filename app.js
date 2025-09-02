@@ -54,6 +54,8 @@
     trade:null, history:[], lastAt:null,
     alt:{ last:null, bid:null, ask:null, at:null },
     _histAt:null,
+    dir:'flat', // direção de cor do blink no card (up/down/flat)
+    _dispLast:null, // último preço exibido (após choosePrice)
   }])) ;
   let NET_ERR = false;
 
@@ -340,16 +342,22 @@
     if(remMs < GUARD_MS){ if(!_tapeUpdateTimer){ _tapeUpdateTimer = setTimeout(safeUpdate, Math.max(30, remMs + 30)); } } else { updateTape(); }
     for(const c of COINS){
       const k = c.pair, st = S[k];
-      const dispPrice = choosePrice(st); setPrice(`p-${k}`, dispPrice);
-      // continuous blink on main price similar to tape
+      const dispPrice = choosePrice(st);
+      // Atualiza direção de cor com base no preço exibido (sticky até mudar)
+      const prevShown = st._dispLast;
+      if(Number.isFinite(dispPrice)){
+        if(Number.isFinite(prevShown)){
+          if(dispPrice > prevShown) st.dir = 'up';
+          else if(dispPrice < prevShown) st.dir = 'down';
+          // se igual, mantém cor anterior
+        }
+        st._dispLast = dispPrice;
+      }
+      setPrice(`p-${k}`, dispPrice);
+      // continuous blink on main price using sticky direction
       const priceEl = document.getElementById(`p-${k}`);
       if(priceEl){
-        let blinkCls = 'flat';
-        if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
-          if(st.last > st.prev) blinkCls = 'up';
-          else if(st.last < st.prev) blinkCls = 'down';
-        }
-        priceEl.className = `price blink ${blinkCls}`;
+        priceEl.className = `price blink ${st.dir || 'flat'}`;
       }
       let deltaStr = '—', cls = '';
       if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
