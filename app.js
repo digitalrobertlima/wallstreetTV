@@ -49,6 +49,7 @@
   const fmtNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 8 });
   const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
   const TIMEOUT_MS = 9000; // timeout padrão de fetch
+  const STALE_TRADE_MS = 3 * REFRESH_MS; // após isso, considerar última negociação desatualizada
 
   // ===== Preconnect condicional (economia móvel) ============================
   const PRECONNECT = { last:new Map(), cooldownMs: 5*60*1000 };
@@ -588,7 +589,7 @@
 
   let cycleCount = 0; let FETCH_TRADES_EVERY = computeTradesEvery(REFRESH_MS);
   async function fetchOrderbookAndTrades(){
-    const shouldFetchTrades = !document.hidden && ((cycleCount % FETCH_TRADES_EVERY) === 0);
+    const baseAllowTrades = !document.hidden && ((cycleCount % FETCH_TRADES_EVERY) === 0);
     const BATCH = 3;
     for(let i=0;i<COINS.length;i+=BATCH){
       const batch = COINS.slice(i, i+BATCH);
@@ -602,7 +603,16 @@
           const ask = bestAsk ? Number(bestAsk.price ?? bestAsk[1] ?? bestAsk) : null;
           S[pair].bid = bid; S[pair].ask = ask; S[pair].spread = (bid && ask) ? (ask - bid) : null; S[pair]._l1At = Date.now();
         }catch(e){ console.error('orderbook falhou', pair, e); NET_ERR = true; }
-        if(shouldFetchTrades){ try{ S[pair].trade = await fetchTradeTri(pair); }catch(e){ console.error('trades tri falhou', pair, e); NET_ERR = true; } }
+        // Revalidar trades quando agendado ou se o último registro estiver velho
+        try{
+          const tr = S[pair].trade;
+          const trTs = tr && tr.timestamp ? (typeof tr.timestamp === 'number' ? tr.timestamp : (new Date(tr.timestamp).getTime() || 0)) : 0;
+          const isStale = !Number.isFinite(trTs) || (Date.now() - trTs) > STALE_TRADE_MS;
+          if(baseAllowTrades || isStale){
+            try{ S[pair].trade = await fetchTradeTri(pair); }
+            catch(e){ console.error('trades tri falhou', pair, e); NET_ERR = true; }
+          }
+        }catch(e){ /* ignore */ }
       }));
       await sleep(200);
     }
@@ -894,13 +904,17 @@
       setText(`bid-${k}`, Number.isFinite(bidDisp) ? fmtBRL.format(bidDisp) : '—');
       setText(`ask-${k}`, Number.isFinite(askDisp) ? fmtBRL.format(askDisp) : '—');
       setText(`spu-${k}`, Number.isFinite(sprDisp) ? fmtBRL.format(sprDisp) : '—');
-      const tr = st.trade; const side = (tr?.type || tr?.TYPE || '').toString().toUpperCase();
+      // Última negociação: esconder se estiver velha
+      const tr = st.trade;
+      const trTs = tr?.timestamp ? (typeof tr.timestamp === 'number' ? tr.timestamp : (new Date(tr.timestamp).getTime() || 0)) : 0;
+      const isStaleTr = !Number.isFinite(trTs) || (Date.now() - trTs) > STALE_TRADE_MS;
+      const side = (tr?.type || tr?.TYPE || '').toString().toUpperCase();
       const sideClass = side === 'BUY' ? 'buy' : side === 'SELL' ? 'sell' : '';
-      setPill(`tt-${k}`, side || '—', sideClass);
-      setText(`ta-${k}`, tr?.amount != null ? `${fmtNum.format(Number(tr.amount))}` : '—');
-      setText(`tp-${k}`, tr?.price  != null ? fmtBRL.format(Number(tr.price)) : '—');
-      setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
-  // chart removed from card for cleaner view
+      setPill(`tt-${k}`, (!isStaleTr && side) ? side : '—', sideClass);
+      setText(`ta-${k}`, (!isStaleTr && tr?.amount != null) ? `${fmtNum.format(Number(tr.amount))}` : '—');
+      setText(`tp-${k}`, (!isStaleTr && tr?.price  != null) ? fmtBRL.format(Number(tr.price)) : '—');
+      setText(`ts-${k}`, (!isStaleTr && tr?.timestamp) ? humanTime(tr.timestamp) : '—');
+      // chart removed from card for cleaner view
     }
     // Atualiza barra de humor do mercado (proporção verde x vermelho)
     if(moodBar){
@@ -974,235 +988,47 @@
   function choosePrice(st){
     const now = Date.now(); const freshMs = 2 * REFRESH_MS;
     const cands = [];
-    if(Number.isFinite(st.last) && st.last>0 && st.lastAt && (now - st.lastAt) < freshMs) cands.push(st.last);
-    if(Number.isFinite(st.alt.last) && st.alt.at && (now - st.alt.at) < freshMs) cands.push(st.alt.last);
-    if(Number.isFinite(st.cg?.last) && st.cg.at && (now - st.cg.at) < freshMs) cands.push(st.cg.last);
-    if(Number.isFinite(st.bs?.last) && st.bs.at && (now - st.bs.at) < freshMs) cands.push(st.bs.last);
-    if(cands.length === 0){
-      // fallback: o que tiver, priorizando BitPreço > Binance > CG > BS
+    if(Number.isFinite(st.last) && st.last>0 && st.lastAt && (now - st.lastAt) < freshMs) cands.push({ v: st.last, at: st.lastAt });
+    if(Number.isFinite(st.alt.last) && st.alt.at && (now - st.alt.at) < freshMs) cands.push({ v: st.alt.last, at: st.alt.at });
+    if(Number.isFinite(st.cg?.last) && st.cg.at && (now - st.cg.at) < freshMs) cands.push({ v: st.cg.last, at: st.cg.at });
+    if(Number.isFinite(st.bs?.last) && st.bs.at && (now - st.bs.at) < freshMs) cands.push({ v: st.bs.last, at: st.bs.at });
+    if(!cands.length){
       if(Number.isFinite(st.last) && st.last>0) return st.last;
       if(Number.isFinite(st.alt.last)) return st.alt.last;
       if(Number.isFinite(st.cg?.last)) return st.cg.last;
       if(Number.isFinite(st.bs?.last)) return st.bs.last;
       return NaN;
     }
-    // retornar mediana para robustez
-    cands.sort((a,b)=>a-b); const mid = Math.floor(cands.length/2);
-    return cands.length%2 ? cands[mid] : (cands[mid-1]+cands[mid])/2;
+    cands.sort((a,b)=> b.at - a.at);
+    return cands[0].v;
   }
   function chooseL1(st){
     const now = Date.now(); const freshMs = 2 * REFRESH_MS;
-    const bids = [], asks = [];
-    if(Number.isFinite(st.bid) && st.lastAt && (now - st.lastAt) < freshMs) bids.push(st.bid);
-    if(Number.isFinite(st.ask) && st.lastAt && (now - st.lastAt) < freshMs) asks.push(st.ask);
-    if(Number.isFinite(st.alt.bid) && st.alt.at && (now - st.alt.at) < freshMs) bids.push(st.alt.bid);
-    if(Number.isFinite(st.alt.ask) && st.alt.at && (now - st.alt.at) < freshMs) asks.push(st.alt.ask);
-    if(Number.isFinite(st.bs.bid) && st.bs.at && (now - st.bs.at) < freshMs) bids.push(st.bs.bid);
-    if(Number.isFinite(st.bs.ask) && st.bs.at && (now - st.bs.at) < freshMs) asks.push(st.bs.ask);
-    const med = (arr)=>{ if(!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); const m=Math.floor(s.length/2); return s.length%2? s[m] : (s[m-1]+s[m])/2; };
-    return { bidDisp: med(bids), askDisp: med(asks) };
-  }
-  function setText(id, txt){ const el = document.getElementById(id); if(el) el.textContent = txt; }
-  function setDelta(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent=txt; el.className = `delta ${cls}`; }
-  function setPill(id, txt, cls){ const el = document.getElementById(id); if(!el) return; el.textContent = txt; el.className = `pill ${cls}`; }
-  function setNet(ok){ const d = document.getElementById('netDot'); if(!d) return; d.className = `dot ${ok? 'ok':'err'}`; d.title = ok? 'Conexão OK' : 'Falha de rede parcial'; }
-  function humanTime(ts){ const t = new Date(ts); if(isNaN(+t)) return String(ts); const diff = (Date.now()-t.getTime())/1000; if(diff < 60) return `${Math.floor(diff)}s atrás`; if(diff < 3600) return `${Math.floor(diff/60)}min atrás`; const d = t.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); return d; }
-  function drawSpark(id, series, ts){
-    const el = document.getElementById(id); if(!el) return;
-    const ctx = el.getContext('2d'); const dpr = window.devicePixelRatio || 1;
-    if(el._dpr !== dpr){ el._dpr = dpr; el.width = Math.floor(el.clientWidth*dpr); el.height = Math.floor(el.clientHeight*dpr); }
-    const W = el.width, H = el.height; ctx.clearRect(0,0,W,H);
-    if(!series || series.length < 2){ return; }
-
-    // Layout
-    const padX = 6*dpr, padY = 6*dpr;
-    const n = series.length;
-    const min = Math.min(...series), max = Math.max(...series);
-    const sx = (i)=> padX + (W - 2*padX) * (i/(n-1));
-    const sy = (v)=> max===min ? H/2 : (H - padY) - ( (v - min) / (max - min) ) * (H - 2*padY);
-
-    // Grid (4 linhas)
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
-    for(let i=1;i<=4;i++){ const y = (H/(4+1))*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-    ctx.restore();
-
-    // SMA curtas
-    function SMA(arr, p){ const out = new Array(arr.length).fill(NaN); let acc = 0; for(let i=0;i<arr.length;i++){ acc += arr[i]; if(i>=p) acc -= arr[i-p]; if(i>=p-1) out[i] = acc/p; } return out; }
-    const sma5 = SMA(series, Math.min(5, n));
-    const sma15 = SMA(series, Math.min(15, n));
-
-    // Linha principal
-    const last = series[n-1], prev = series[n-2];
-    const up = last >= prev;
-    const mainCol = up ? 'rgba(0,200,83,.9)' : 'rgba(255,59,48,.9)';
-    ctx.lineWidth = 1.6*dpr; ctx.strokeStyle = mainCol; ctx.beginPath();
-    ctx.moveTo(sx(0), sy(series[0]));
-    for(let i=1;i<n;i++){ ctx.lineTo(sx(i), sy(series[i])); }
-    ctx.stroke();
-
-    // SMA(5)
-    ctx.lineWidth = 1*dpr; ctx.strokeStyle = 'rgba(56,189,248,.9)'; // ciano
-    ctx.beginPath();
-    let started=false; for(let i=0;i<n;i++){ const v=sma5[i]; if(!Number.isFinite(v)) continue; const x=sx(i), y=sy(v); if(!started){ ctx.moveTo(x,y); started=true; } else { ctx.lineTo(x,y); } }
-    if(started) ctx.stroke();
-
-    // SMA(15)
-    ctx.lineWidth = 1*dpr; ctx.strokeStyle = 'rgba(203,213,225,.9)'; // cinza claro
-    ctx.beginPath();
-    started=false; for(let i=0;i<n;i++){ const v=sma15[i]; if(!Number.isFinite(v)) continue; const x=sx(i), y=sy(v); if(!started){ ctx.moveTo(x,y); started=true; } else { ctx.lineTo(x,y); } }
-    if(started) ctx.stroke();
-
-    // Linha do último preço
-    const yLast = sy(last);
-    ctx.save(); ctx.setLineDash([4*dpr, 3*dpr]); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, yLast); ctx.lineTo(W, yLast); ctx.stroke(); ctx.restore();
-
-    // Marcador do último ponto
-    ctx.beginPath(); ctx.fillStyle = mainCol; ctx.arc(sx(n-1), yLast, 2*dpr, 0, Math.PI*2); ctx.fill();
-
-    // Marcadores High/Low na borda direita
-    const yHi = sy(max), yLo = sy(min);
-    ctx.strokeStyle = 'rgba(148,163,184,.6)'; ctx.lineWidth = 2; // slate
-    ctx.beginPath(); ctx.moveTo(W-5*dpr, yHi); ctx.lineTo(W, yHi); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(W-5*dpr, yLo); ctx.lineTo(W, yLo); ctx.stroke();
-
-    // Dados para tooltip
-    el._spark = { series: [...series], min, max, padX, padY, W, H };
-    if(!el._tipWired){
-      el._tipWired = true;
-      const onMove = (ev)=>{
-        if(!chartTip || !el._spark) return;
-        const rect = el.getBoundingClientRect();
-        const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
-        const s = el._spark; const n = s.series.length; if(n<2) return;
-        const rx = Math.max(s.padX, Math.min(s.W - s.padX, x));
-        const t = (rx - s.padX) / Math.max(1, (s.W - 2*s.padX));
-        const idx = Math.max(0, Math.min(n-1, Math.round(t * (n-1))));
-        const v = s.series[idx]; if(!Number.isFinite(v)) return;
-        const base = s.series[0]; const pct = base ? ((v-base)/base*100) : 0;
-        chartTip.textContent = `${fmtBRL.format(v)} • ${pct>=0?'+':''}${pct.toFixed(2)}%`;
-        chartTip.hidden = false;
-        const pageX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
-        const pageY = (ev.touches ? ev.touches[0].clientY : ev.clientY);
-        const tipRect = chartTip.getBoundingClientRect();
-        const off = 10;
-        let tx = pageX + off; let ty = pageY + off;
-        if((tx + tipRect.width) > window.innerWidth - 6) tx = pageX - tipRect.width - off;
-        if((ty + tipRect.height) > window.innerHeight - 6) ty = pageY - tipRect.height - off;
-        chartTip.style.left = `${Math.max(6, tx)}px`;
-        chartTip.style.top = `${Math.max(6, ty)}px`;
-      };
-      const onLeave = ()=>{ if(chartTip) chartTip.hidden = true; };
-      el.addEventListener('mousemove', onMove);
-      el.addEventListener('touchstart', onMove, { passive:true });
-      el.addEventListener('touchmove', onMove, { passive:true });
-      el.addEventListener('mouseleave', onLeave);
-      el.addEventListener('touchend', onLeave);
-      el.addEventListener('touchcancel', onLeave);
-    }
-  }
-
-  // ===== Candlesticks =======================================================
-  function binSizeForRange(key){
-    // choose coarse bins to fit ~60-120 candles
-    switch(key){
-      case '1h': return 60_000;       // 1 min
-      case '4h': return 5*60_000;     // 5 min
-      case '24h': default: return 15*60_000; // 15 min
-    }
-  }
-  function makeCandles(ts, prices, binMs){
-    const out = [];
-    if(!ts || !prices || ts.length !== prices.length || ts.length === 0) return out;
-    let cur = null; let curIdx = -1;
-    const n = ts.length;
-    for(let i=0;i<n;i++){
-      const t = ts[i]; const p = prices[i]; if(!Number.isFinite(t) || !Number.isFinite(p)) continue;
-      const bucket = Math.floor(t / binMs) * binMs;
-      if(!cur || bucket !== cur.t){
-        // flush
-        if(cur){ out.push(cur); }
-        cur = { t: bucket, o: p, h: p, l: p, c: p, v: 1, firstIdx: i, lastIdx: i };
-        curIdx++;
-      } else {
-        // acc
-        if(p > cur.h) cur.h = p; if(p < cur.l) cur.l = p; cur.c = p; cur.v++; cur.lastIdx = i;
-      }
-    }
-    if(cur) out.push(cur);
-    return out;
-  }
-  function drawCandles(id, candles){
-    const el = document.getElementById(id); if(!el) return;
-    const ctx = el.getContext('2d'); const dpr = window.devicePixelRatio || 1;
-    if(el._dpr !== dpr){ el._dpr = dpr; el.width = Math.floor(el.clientWidth*dpr); el.height = Math.floor(el.clientHeight*dpr); }
-    const W = el.width, H = el.height; ctx.clearRect(0,0,W,H);
-    if(!candles || candles.length < 2) return;
-    const padX = 6*dpr, padY = 6*dpr;
-    const n = candles.length; const min = Math.min(...candles.map(c=>c.l)); const max = Math.max(...candles.map(c=>c.h));
-    const sx = (i)=> padX + (W - 2*padX) * (i/(n-1));
-    const sy = (v)=> max===min ? H/2 : (H - padY) - ( (v - min) / (max - min) ) * (H - 2*padY);
-
-    // grid
-    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1; for(let i=1;i<=4;i++){ const y=(H/(4+1))*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); } ctx.restore();
-
-    // width per candle
-    const gap = Math.max(1*dpr, (W - 2*padX) / Math.max(1, n-1) * 0.15);
-    const bodyW = Math.max(1*dpr, (W - 2*padX) / Math.max(1, n-1) * 0.6);
-
-    // draw wicks and bodies
-    for(let i=0;i<n;i++){
-      const c = candles[i]; const x = Math.round(sx(i));
-      const up = c.c >= c.o; const col = up ? 'rgba(0,200,83,.9)' : 'rgba(255,59,48,.9)';
-      const yH = sy(c.h), yL = sy(c.l), yO = sy(c.o), yC = sy(c.c);
-      // wick
-      ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, 1*dpr);
-      ctx.beginPath(); ctx.moveTo(x, yH); ctx.lineTo(x, yL); ctx.stroke();
-      // body
-      const bx = Math.round(x - bodyW/2), by = Math.round(Math.min(yO, yC)), bh = Math.max(1, Math.abs(yC - yO));
-      ctx.fillStyle = col;
-      ctx.fillRect(bx, by, Math.max(1, Math.floor(bodyW)), bh);
-      // small gap to visually separate
-      if(gap > 1){}
-    }
-
-    // last price line
-    const last = candles[n-1].c; const yLast = sy(last);
-    ctx.save(); ctx.setLineDash([4*dpr, 3*dpr]); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, yLast); ctx.lineTo(W, yLast); ctx.stroke(); ctx.restore();
-    ctx.beginPath(); ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.arc(W-5*dpr, yLast, 2*dpr, 0, Math.PI*2); ctx.fill();
-
-    // tooltip
-    const tip = document.getElementById('chartTip');
-    el._candles = { candles, padX, padY, W, H, dpr };
-    if(!el._tipWired2){
-      el._tipWired2 = true;
-      const onMove = (ev)=>{
-        if(!tip || !el._candles) return;
-        const rect = el.getBoundingClientRect();
-        const clientX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
-        const clientY = (ev.touches ? ev.touches[0].clientY : ev.clientY);
-        const x = clientX - rect.left;
-        const s = el._candles; const n = s.candles.length; if(n<1) return;
-        const rx = Math.max(s.padX, Math.min(s.W - s.padX, x));
-        const t = (rx - s.padX) / Math.max(1, (s.W - 2*s.padX));
-        const idx = Math.max(0, Math.min(n-1, Math.round(t * (n-1))));
-        const c = s.candles[idx]; if(!c) return;
-        const base = s.candles[0]?.o ?? c.o; const pct = base ? ((c.c - base)/base*100) : 0;
-        tip.textContent = `${fmtBRL.format(c.c)} • O ${fmtBRL.format(c.o)} • H ${fmtBRL.format(c.h)} • L ${fmtBRL.format(c.l)} • ${pct>=0?'+':''}${pct.toFixed(2)}%`;
-        tip.hidden = false; const tipRect = tip.getBoundingClientRect(); const off=10; let tx = clientX + off, ty = clientY + off; if((tx + tipRect.width) > window.innerWidth - 6) tx = clientX - tipRect.width - off; if((ty + tipRect.height) > window.innerHeight - 6) ty = clientY - tipRect.height - off; tip.style.left = `${Math.max(6, tx)}px`; tip.style.top = `${Math.max(6, ty)}px`;
-      };
-      const onLeave = ()=>{ if(tip) tip.hidden = true; };
-      el.addEventListener('mousemove', onMove);
-      el.addEventListener('touchstart', onMove, { passive:true });
-      el.addEventListener('touchmove', onMove, { passive:true });
-      el.addEventListener('mouseleave', onLeave);
-      el.addEventListener('touchend', onLeave);
-      el.addEventListener('touchcancel', onLeave);
-    }
+    const cands = [];
+    if((Number.isFinite(st.bid) || Number.isFinite(st.ask)) && st.lastAt && (now - st.lastAt) < freshMs) cands.push({ bid: st.bid, ask: st.ask, at: st.lastAt });
+    if((Number.isFinite(st.alt.bid) || Number.isFinite(st.alt.ask)) && st.alt.at && (now - st.alt.at) < freshMs) cands.push({ bid: st.alt.bid, ask: st.alt.ask, at: st.alt.at });
+    if((Number.isFinite(st.bs.bid) || Number.isFinite(st.bs.ask)) && st.bs.at && (now - st.bs.at) < freshMs) cands.push({ bid: st.bs.bid, ask: st.bs.ask, at: st.bs.at });
+    if(!cands.length) return { bidDisp: Number.isFinite(st.bid)?st.bid:null, askDisp: Number.isFinite(st.ask)?st.ask:null };
+    cands.sort((a,b)=> b.at - a.at);
+    const top = cands[0];
+    return { bidDisp: Number.isFinite(top.bid)?top.bid:null, askDisp: Number.isFinite(top.ask)?top.ask:null };
   }
 
   // ===== Loop ================================================================
-  async function cycle(){ NET_ERR = false; await fetchTickers(); await fetchOrderbookAndTrades(); render(); lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); setNet(!NET_ERR); cycleCount++; }
+  async function cycle(){
+    NET_ERR = false;
+    // Paraleliza fontes principais para usar a primeira que chegar
+    await Promise.allSettled([
+      fetchTickers(),
+      fetchBinanceLight(),
+      fetchCoinGeckoBatch(),
+    ]);
+    await fetchOrderbookAndTrades();
+    render();
+    lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    setNet(!NET_ERR);
+    cycleCount++;
+  }
   let _cycleTimer = null; let _isRunning = false; function nextDelay(){ return document.hidden ? REFRESH_HIDDEN_MS : REFRESH_MS; } function scheduleNext(ms){ if(_cycleTimer) clearTimeout(_cycleTimer); _cycleTimer = setTimeout(runCycle, ms); _nextTickAt = Date.now() + ms; }
   async function runCycle(){
     if(_isRunning){ scheduleNext(250); return; }
@@ -1211,10 +1037,9 @@
     catch(e){ console.error('cycle erro:', e); }
     finally{
       try{
-        if((cycleCount % 2) === 1){ await fetchBinanceLight(); }
-        if((cycleCount % CG_EVERY) === 0){ await fetchCoinGeckoBatch(); }
+        // Já buscamos Binance e CG dentro de cycle(); manter Bitstamp e News em cadência
         if((cycleCount % BS_EVERY) === 0){ await fetchBitstampLight(); }
-  if((cycleCount % 1) === 0){ await refreshNews(); }
+        if((cycleCount % 1) === 0){ await refreshNews(); }
         render();
       }catch(e){ console.error('aux fetch erro:', e); }
       _isRunning = false; scheduleNext(nextDelay());
