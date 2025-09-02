@@ -363,9 +363,6 @@
             <div class="title" id="news-ttl-int2-${c.pair}">—</div>
           </div>
         </div>
-        <div class="news-controls">
-          <button class="news-toggle" id="newsOnly-${c.pair}" aria-pressed="false" title="Exibir apenas manchetes">📰 Só manchetes</button>
-        </div>
       </div>` : ''}
       <div class="kpis">
         <div class="kpi"><div class="label">Alta 24h</div><div class="value" id="hi-${c.pair}">—</div></div>
@@ -389,6 +386,7 @@
       <div class="tile-foot">
         <div class="pair pair-foot">${c.label}</div>
         <div class="aud-controls">
+          ${c.pair==='usdt-brl' ? `<button class="news-toggle" id="newsOnly-${c.pair}" aria-pressed="false" title="Exibir apenas manchetes">📰 Só manchetes</button>` : ''}
           <button class="aud-btn" id="au-${c.pair}" aria-pressed="${S[c.pair].aud? 'true':'false'}" title="Ativar som para ${c.symbol}">${S[c.pair].aud ? '🔊' : '🔇'}</button>
           <button class="solo-btn" id="so-${c.pair}" aria-pressed="${AUD_SOLO===c.pair? 'true':'false'}" title="Solo: ouvir apenas ${c.symbol}">🎧</button>
         </div>

@@ -89,7 +89,7 @@ button:hover{background:#232b3a}
 .ticker{font-size: clamp(18px, 4vw, 28px); font-weight:800; letter-spacing:1px}
 .trend{font-size:14px; margin: 0 6px 0 6px; color:var(--muted)}
 .pair{color:var(--muted); font-size: clamp(11px, 1.6vw, 12px)}
-.pair-inline{display:none}
+.tile .pair-inline{display:none}
 .price{font-size: clamp(18px, 4.4vw, 40px); font-weight:900; line-height:1.1}
 .row .price{min-width:0; flex:1 1 auto; white-space:nowrap}
 @media (max-width: 420px){
@@ -134,7 +134,9 @@ canvas.spark{width:100%; height:56px; border-radius:10px; background:#0b0f16; bo
 /* tile footer */
 .tile-foot{display:flex; align-items:center; justify-content:space-between; margin-top:auto; gap:10px}
 .pair-foot{max-width:60%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-.aud-controls{display:flex; gap:8px}
+.aud-controls{display:flex; gap:8px; align-items:center}
+.news-toggle{background:#0d121a; color:#cbd5e1; padding:4px 8px; border-radius:8px; font-size:12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06)}
+.news-toggle[aria-pressed="true"]{background:#223047}
 footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,.06)}
 .info{display:flex; flex-direction:column; gap:6px; align-items:flex-start}
 .wx-box{background:#0b0f16; color:#d1d7e0; border-radius:10px; padding:6px 10px; font-size:13px; line-height:1; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05)}
