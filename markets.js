@@ -97,4 +97,11 @@
 
   render();
   setInterval(render, 1000);
+
+  // Service worker (para acessos diretos à página)
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      try{ navigator.serviceWorker.register('./sw.js'); }catch{}
+    });
+  }
 })();

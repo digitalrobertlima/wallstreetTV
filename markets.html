@@ -28,16 +28,9 @@
       <h1>Mercados Mundiais</h1>
       <a class="back" href="./index.html">← Voltar</a>
     </header>
-    <p class="sub">Relógios ao vivo e sessões dos principais mercados. Considera feriados e horários padrão; pode variar conforme calendário local.</p>
+  <p class="sub">Relógios ao vivo e horários padrão (sem feriados); podem variar conforme o calendário local.</p>
     <div id="clocks" class="grid"></div>
   </div>
   <script src="./markets.js" defer></script>
-  <script>
-    if('serviceWorker' in navigator){
-      window.addEventListener('load', () => {
-        try{ navigator.serviceWorker.register('./sw.js'); }catch{}
-      });
-    }
-  </script>
 </body>
 </html>

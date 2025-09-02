@@ -135,6 +135,26 @@
 				"push"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-markets-sw-move",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"chore(markets): move SW registration into markets.js; adjust copy re: holidays",
+				"&&",
+				"git",
+				"push"
+			],
+			"group": "build"
 		}
 	]
 }
