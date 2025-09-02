@@ -81,9 +81,29 @@
     .pill.buy{background: rgba(0,200,83,.12); color: var(--up)}
     .pill.sell{background: rgba(255,59,48,.12); color: var(--down)}
     footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,.06)}
-    .marquee{white-space:nowrap; overflow:hidden}
-    .marquee span{display:inline-block; padding-left:100%; animation: scroll 40s linear infinite}
-    @keyframes scroll{100%{transform:translateX(-100%)}}
+    .marquee{position:relative; white-space:nowrap; overflow:hidden}
+    .marquee::before, .marquee::after{
+      content:""; position:absolute; top:0; bottom:0; width:56px; z-index:1;
+      pointer-events:none;
+    }
+    .marquee::before{
+      left:0; background:linear-gradient(90deg, var(--bg), transparent);
+    }
+    .marquee::after{
+      right:0; background:linear-gradient(-90deg, var(--bg), transparent);
+    }
+    .tape-track{
+      position:relative; display:flex; gap:64px; align-items:center;
+      will-change:transform; animation: tape-scroll var(--tape-speed, 40s) linear infinite;
+    }
+    .run{display:inline-flex; gap:24px; align-items:center; padding-left:24px}
+    .tick{display:inline-flex; gap:10px; align-items:center; font-weight:700}
+    .sym{color:#d1d7e0; font-size:13px; letter-spacing:.4px}
+    .pri{font-size:14px}
+    .sig.up{color:var(--up)}
+    .sig.down{color:var(--down)}
+    .sep{opacity:.5; color:var(--muted)}
+    @keyframes tape-scroll{100%{transform:translateX(-50%)}}
     @media (min-height: 800px){ canvas.spark{height:72px} }
   </style>
 </head>
@@ -107,7 +127,12 @@
 
   <footer>
     <div class="sub">Uso educativo / visual. Não é recomendação de investimento.</div>
-    <div class="marquee" aria-hidden="true"><span id="tape"></span></div>
+    <div class="marquee" aria-hidden="true">
+      <div class="tape-track" id="tapeTrack">
+        <span class="run" id="tapeA"></span>
+        <span class="run" id="tapeB"></span>
+      </div>
+    </div>
   </footer>
 </div>
 
@@ -167,7 +192,9 @@
 
   // ===== DOM BUILD ===========================================================
   const grid = document.getElementById('grid');
-  const tape = document.getElementById('tape');
+  const tapeTrack = document.getElementById('tapeTrack');
+  const tapeA = document.getElementById('tapeA');
+  const tapeB = document.getElementById('tapeB');
   const lastUpdate = document.getElementById('lastUpdate');
   const intervalText = document.getElementById('intervalText');
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
@@ -359,15 +386,18 @@
 
   // ===== RENDER ==============================================================
   function render(){
-    // fita/marquee
-    tape.textContent = COINS.map(c => {
+    // fita/marquee estilizada
+    const items = COINS.map(c => {
       const st = S[c.pair];
-  const priceNum = choosePrice(st);
-  const price = Number.isFinite(priceNum) ? fmtBRL.format(priceNum) : '—';
+      const priceNum = choosePrice(st);
+      const price = Number.isFinite(priceNum) ? fmtBRL.format(priceNum) : '—';
       const d = (st.prev && st.last) ? (st.last - st.prev) : 0;
-      const s = d > 0 ? '▲' : d < 0 ? '▼' : '•';
-      return `${c.symbol} ${price} ${s}`;
-    }).join('  ·  ');
+      const cls = d>0 ? 'up' : d<0 ? 'down' : '';
+      return `<span class="tick"><span class="sym">${c.symbol}</span><span class="pri">${price}</span><span class="sig ${cls}">${d>0?'▲':d<0?'▼':'•'}</span></span>`;
+    });
+    const html = items.join('<span class="sep">·</span>');
+    // Preenche duas execuções para loop contínuo
+    if(tapeA && tapeB){ tapeA.innerHTML = html; tapeB.innerHTML = html; }
 
     // tiles
     for(const c of COINS){
@@ -511,6 +541,8 @@
     render();
     lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   cycleCount++;
+  // ajustar velocidade da fita após render
+  tuneTickerSpeed();
   }
 
   // ===== SCHEDULER: evita sobreposição e ajusta conforme visibilidade =======
@@ -538,6 +570,18 @@
     if(!document.hidden){ FETCH_TRADES_EVERY = computeTradesEvery(REFRESH_MS); }
     scheduleNext(250);
   });
+
+  // ===== TICKER SPEED ADAPTATION ===========================================
+  function tuneTickerSpeed(){
+    if(!tapeTrack || !tapeA) return;
+    const total = tapeA.scrollWidth; // one run
+    // target ~110px/s for readability
+    const pxPerSec = 110;
+    const seconds = Math.max(20, Math.min(90, total / pxPerSec));
+    tapeTrack.style.setProperty('--tape-speed', seconds + 's');
+  }
+  const roTicker = new ResizeObserver(()=> tuneTickerSpeed());
+  if(tapeTrack) roTicker.observe(tapeTrack);
 
   // ===== FULLSCREEN ==========================================================
   const fsBtn = document.getElementById('fullscreenBtn');
