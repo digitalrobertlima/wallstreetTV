@@ -177,6 +177,9 @@
   const rg24 = document.getElementById('rg-24h');
   const chartTip = document.getElementById('chartTip');
   const marketsBtn = document.getElementById('marketsBtn');
+  const optWiki = document.getElementById('optWiki');
+  const optHF = document.getElementById('optHF');
+  const optSave = document.getElementById('optSave');
   // Install banner elements
   const installBanner = document.getElementById('installBanner');
   const ibInstall = document.getElementById('ibInstall');
@@ -192,6 +195,12 @@
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
   if(versionBadge) versionBadge.textContent = APP_VERSION;
   if(diagPersist){ diagPersist.checked = !!PERSIST; diagPersist.addEventListener('change', ()=>{ PERSIST = !!diagPersist.checked; if(!PERSIST) try{ localStorage.removeItem('wstv_diag'); }catch{} else saveDiag(); }); }
+  // Load optional settings
+  const OPT = { wiki:false, hf:'' };
+  try{ const j = JSON.parse(localStorage.getItem('wstv_opt')||'{}'); if(j && typeof j==='object'){ OPT.wiki=!!j.wiki; OPT.hf=j.hf||''; } }catch{}
+  if(optWiki) optWiki.checked = !!OPT.wiki;
+  if(optHF) optHF.value = OPT.hf||'';
+  if(optSave){ optSave.addEventListener('click', ()=>{ try{ const val={ wiki: !!(optWiki && optWiki.checked), hf: (optHF && optHF.value)||'' }; localStorage.setItem('wstv_opt', JSON.stringify(val)); }catch{} }); }
 
   // Intensidade visual (0-100) influencia brilhos/tempos sutis
   let INTENSITY = 70;
