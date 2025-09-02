@@ -1017,12 +1017,11 @@
   // ===== Loop ================================================================
   async function cycle(){
     NET_ERR = false;
-    // Paraleliza fontes principais para usar a primeira que chegar
-    await Promise.allSettled([
-      fetchTickers(),
-      fetchBinanceLight(),
-      fetchCoinGeckoBatch(),
-    ]);
+    await fetchTickers();
+    // No primeiro ciclo, dispara fontes alternativas em paralelo (fire-and-forget)
+    if(cycleCount === 0){
+      try{ Promise.allSettled([ fetchBinanceLight(), fetchCoinGeckoBatch() ]); }catch{}
+    }
     await fetchOrderbookAndTrades();
     render();
     lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
@@ -1037,7 +1036,9 @@
     catch(e){ console.error('cycle erro:', e); }
     finally{
       try{
-        // Já buscamos Binance e CG dentro de cycle(); manter Bitstamp e News em cadência
+        // Cadências auxiliares (respeitando orçamento)
+        if((cycleCount % 2) === 1){ await fetchBinanceLight(); }
+        if((cycleCount % CG_EVERY) === 0){ await fetchCoinGeckoBatch(); }
         if((cycleCount % BS_EVERY) === 0){ await fetchBitstampLight(); }
         if((cycleCount % 1) === 0){ await refreshNews(); }
         render();
