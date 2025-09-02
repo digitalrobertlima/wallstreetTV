@@ -236,6 +236,7 @@
   let TAPE_START_TS = performance.now();
   let TAPE_BUILT = false;
   const TAPE_ELEMS = []; // [{ pair, aPri, aSig, bPri, bSig }]
+  let TAPE_RUN_WIDTH = 0; // largura fixa de uma corrida
   function buildTape(){
     if(!tapeA || !tapeB || TAPE_BUILT) return;
     tapeA.innerHTML = '';
@@ -261,7 +262,11 @@
       TAPE_ELEMS.push({ pair:c.pair, aPri:a.pri, aSig:a.sig, bPri:b.pri, bSig:b.sig });
     });
     TAPE_BUILT = true;
-    tuneTickerSpeed(true);
+  // travar largura da corrida para estabilidade
+  TAPE_RUN_WIDTH = tapeA.scrollWidth;
+  tapeA.style.width = TAPE_RUN_WIDTH + 'px';
+  tapeB.style.width = TAPE_RUN_WIDTH + 'px';
+  tuneTickerSpeed(true);
   }
   // tempo e clima
   const WEATHER_CITIES = [
@@ -536,7 +541,14 @@
     }
     if(tapeA){
       const w = tapeA.scrollWidth;
-      if(w !== lastWidth){ tapeA._lastWidth = w; tuneTickerSpeed(true); }
+      // só reajusta se drift significativo (>16px)
+      if(Math.abs(w - TAPE_RUN_WIDTH) > 16){
+        TAPE_RUN_WIDTH = w;
+        tapeA.style.width = TAPE_RUN_WIDTH + 'px';
+        tapeB.style.width = TAPE_RUN_WIDTH + 'px';
+        tapeA._lastWidth = w;
+        tuneTickerSpeed(true);
+      }
     }
 
     // tiles
