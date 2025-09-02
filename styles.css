@@ -38,9 +38,11 @@ header{
 .sub{color:var(--muted); font-size: clamp(11px, 1.4vw, 13px)}
 .controls{display:flex; gap:10px; align-items:center}
 .net{display:inline-flex; align-items:center; gap:8px}
-.dot{width:10px; height:10px; border-radius:999px; background:#8892a6; box-shadow:0 0 0 1px rgba(255,255,255,.15) inset}
+.dot{width:10px; height:10px; border-radius:999px; background:#8892a6; box-shadow:0 0 0 1px rgba(255,255,255,.15) inset, 0 0 0 0 rgba(0,200,83,0); animation: netPulse 2.2s ease-out infinite}
 .dot.ok{background:#00C853}
 .dot.err{background:#FF3B30}
+@keyframes netPulse{0%{box-shadow:0 0 0 0 rgba(0,200,83,.0)}50%{box-shadow:0 0 0 8px rgba(0,200,83,.08)}100%{box-shadow:0 0 0 0 rgba(0,200,83,0)}}
+@media (prefers-reduced-motion: reduce){.dot{animation:none}}
 .version{padding:6px 10px; border-radius:999px; background:#0d121a; color:#cbd5e1; font-size:12px; font-weight:700; letter-spacing:.4px}
 button{all:unset; cursor:pointer; padding:10px 14px; border-radius:12px; background:#1a202c; color:#e6e6e6; font-weight:600}
 button:hover{background:#232b3a}
@@ -118,5 +120,9 @@ footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space
 .diag-toggle{position:fixed; right:8px; bottom:8px; width:36px; height:36px; border-radius:50%; border:none; background:#0d121a; color:#cbd5e1; box-shadow:0 4px 16px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.06); cursor:pointer; z-index:11}
 /* PWA badge */
 .pwa-badge{display:inline-block; margin-top:4px; font-size:11px; padding:4px 8px; border-radius:999px; background:#0d121a; color:#9ee493; border:1px solid rgba(255,255,255,.08)}
+/* LIVE badge */
+.live-badge{display:inline-block; font-size:12px; font-weight:800; letter-spacing:.6px; padding:6px 10px; border-radius:999px; background:#210a0a; color:#ff6b6b; border:1px solid rgba(255,107,107,.35); box-shadow:0 0 0 0 rgba(255,107,107,.35); animation: livePulse 1.8s ease-in-out infinite}
+@keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(255,107,107,.35)}70%{box-shadow:0 0 0 10px rgba(255,107,107,0)}100%{box-shadow:0 0 0 0 rgba(255,107,107,0)}}
+@media (prefers-reduced-motion: reduce){.live-badge{animation:none}}
 /* noscript */
 .noscript-warning{padding:12px; background:#1a202c; color:#e8e6e3; text-align:center}

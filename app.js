@@ -66,6 +66,7 @@
   const tapeA = document.getElementById('tapeA');
   const tapeB = document.getElementById('tapeB');
   const lastUpdate = document.getElementById('lastUpdate');
+  const nextInEl = document.getElementById('nextIn');
   const intervalText = document.getElementById('intervalText');
   const brClock = document.getElementById('brClock');
   const brWeather = document.getElementById('brWeather');
@@ -421,9 +422,16 @@
 
   // ===== Loop ================================================================
   async function cycle(){ NET_ERR = false; await fetchTickers(); await fetchOrderbookAndTrades(); render(); lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); setNet(!NET_ERR); cycleCount++; }
-  let _cycleTimer = null; let _isRunning = false; function nextDelay(){ return document.hidden ? REFRESH_HIDDEN_MS : REFRESH_MS; } function scheduleNext(ms){ if(_cycleTimer) clearTimeout(_cycleTimer); _cycleTimer = setTimeout(runCycle, ms); }
+  let _cycleTimer = null; let _isRunning = false; function nextDelay(){ return document.hidden ? REFRESH_HIDDEN_MS : REFRESH_MS; } function scheduleNext(ms){ if(_cycleTimer) clearTimeout(_cycleTimer); _cycleTimer = setTimeout(runCycle, ms); _nextTickAt = Date.now() + ms; }
   async function runCycle(){ if(_isRunning){ scheduleNext(250); return; } _isRunning = true; try{ await cycle(); } catch(e){ console.error('cycle erro:', e); } finally{ try{ if((cycleCount % 2) === 1){ await fetchBinanceLight(); render(); } }catch(e){ console.error('binance erro:', e); } _isRunning = false; scheduleNext(nextDelay()); } }
   runCycle(); requestAnimationFrame(()=>{ TAPE_START_TS = performance.now(); tuneTickerSpeed(true); });
+  // live countdown to next refresh
+  let _nextTickAt = Date.now() + nextDelay();
+  (function updateCountdown(){
+    const now = Date.now(); const ms = Math.max(0, _nextTickAt - now); const s = Math.ceil(ms/1000);
+    if(nextInEl){ nextInEl.textContent = `${s}s`; nextInEl.style.color = s <= 3 ? 'var(--down)' : s <= 10 ? 'var(--accent)' : 'var(--muted)'; }
+    requestAnimationFrame(updateCountdown);
+  })();
 
   const brFmt = new Intl.DateTimeFormat('pt-BR', { timeZone:'America/Sao_Paulo', hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
   function tickClock(){ if(brClock) brClock.textContent = `Brasília: ${brFmt.format(new Date())}`; }
