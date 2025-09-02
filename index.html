@@ -129,6 +129,11 @@
     ORDERBOOK:   (pair) => `https://api.bitpreco.com/${pair}/orderbook`,
     TRADES:      (pair) => `https://api.bitpreco.com/${pair}/trades`,
   };
+  // Binance (Spot) — públicos
+  const ENDPOINTS_BINANCE = {
+    PRICE:      (symbol) => `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`,
+    BOOK_TICKER:(symbol) => `https://api.binance.com/api/v3/ticker/bookTicker?symbol=${symbol}`,
+  };
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' });
   const fmtNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 8 });
   const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
@@ -148,6 +153,9 @@
     last:null, prev:null, high:null, low:null, vol:null, var:null,
     bid:null, ask:null, spread:null,
     trade:null, history:[], // preços recentes para sparkline
+    lastAt:null, // timestamp do último update BitPreço
+    alt:{ last:null, bid:null, ask:null, at:null }, // dados alternativos (Binance)
+    _histAt:null, // controle de frequência de pontos no spark
   }]));
 
   // ===== DOM BUILD ===========================================================
@@ -256,11 +264,20 @@
     st.low  = Number(t.low  ?? t.Low  ?? NaN);
     st.vol  = Number(t.vol  ?? t.volume ?? NaN);
     st.var  = (t.var !== undefined) ? Number(t.var) : null; // var 24h conforme documentação BitPreço
+    st.lastAt = Date.now();
 
     if(Number.isFinite(st.last)){
-      st.history.push(st.last);
-      if(st.history.length > MAX_POINTS) st.history.shift();
+      maybePushHistory(st, st.last);
     }
+  }
+
+  function maybePushHistory(st, price){
+    const now = Date.now();
+    const MIN_GAP = 10_000; // 10s entre pontos
+    if(st._histAt && (now - st._histAt) < MIN_GAP) return;
+    st._histAt = now;
+    st.history.push(price);
+    if(st.history.length > MAX_POINTS) st.history.shift();
   }
 
   // Para reduzir chamadas, buscamos TRADES em frequência dinâmica
@@ -294,12 +311,52 @@
     }
   }
 
+  // ===== BINANCE INTEGRAÇÃO (leve: preço + book ticker) =====================
+  const BINANCE_SYMBOLS = Object.fromEntries(COINS.map(c=>{
+    const s = c.pair.toUpperCase().replace(/-/g,''); // ex.: BTC-BRL => BTCBRL
+    return [c.pair, s];
+  }));
+
+  async function fetchBinanceLight(){
+    const BATCH = 4;
+    for(let i=0;i<COINS.length;i+=BATCH){
+      const batch = COINS.slice(i, i+BATCH);
+      await Promise.all(batch.map(async c => {
+        const pair = c.pair;
+        const sym = BINANCE_SYMBOLS[pair];
+        if(!sym) return;
+        try{
+          // preço
+          const tp = await getJSON(ENDPOINTS_BINANCE.PRICE(sym));
+          const last = Number(tp?.price ?? NaN);
+          if(Number.isFinite(last)){
+            const st = S[pair];
+            st.alt.last = last; st.alt.at = Date.now();
+            maybePushHistory(st, last);
+          }
+        }catch(e){ /* símbolo pode não existir em BRL na Binance */ }
+        try{
+          // best bid/ask
+          const bt = await getJSON(ENDPOINTS_BINANCE.BOOK_TICKER(sym));
+          const bid = Number(bt?.bidPrice ?? NaN);
+          const ask = Number(bt?.askPrice ?? NaN);
+          const st = S[pair];
+          st.alt.bid = Number.isFinite(bid) ? bid : st.alt.bid;
+          st.alt.ask = Number.isFinite(ask) ? ask : st.alt.ask;
+          if(Number.isFinite(st.alt.bid) && Number.isFinite(st.alt.ask)) st.alt.at = Date.now();
+        }catch(e){ /* ignorar se indisponível */ }
+      }));
+      await sleep(150);
+    }
+  }
+
   // ===== RENDER ==============================================================
   function render(){
     // fita/marquee
     tape.textContent = COINS.map(c => {
       const st = S[c.pair];
-      const price = Number.isFinite(st.last) ? fmtBRL.format(st.last) : '—';
+  const priceNum = choosePrice(st);
+  const price = Number.isFinite(priceNum) ? fmtBRL.format(priceNum) : '—';
       const d = (st.prev && st.last) ? (st.last - st.prev) : 0;
       const s = d > 0 ? '▲' : d < 0 ? '▼' : '•';
       return `${c.symbol} ${price} ${s}`;
@@ -308,7 +365,8 @@
     // tiles
     for(const c of COINS){
       const k = c.pair, st = S[k];
-      setText(`p-${k}`, Number.isFinite(st.last) ? fmtBRL.format(st.last) : '—');
+  const dispPrice = choosePrice(st);
+  setText(`p-${k}`, Number.isFinite(dispPrice) ? fmtBRL.format(dispPrice) : '—');
       // delta curto vs tick anterior
       let deltaStr = '—', cls = '';
       if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
@@ -323,9 +381,12 @@
       setText(`lo-${k}`, Number.isFinite(st.low)  ? fmtBRL.format(st.low)  : '—');
       setText(`vo-${k}`, Number.isFinite(st.vol)  ? fmtNum.format(st.vol)  : '—');
 
-      setText(`bid-${k}`, Number.isFinite(st.bid) ? fmtBRL.format(st.bid) : '—');
-      setText(`ask-${k}`, Number.isFinite(st.ask) ? fmtBRL.format(st.ask) : '—');
-      setText(`spu-${k}`, Number.isFinite(st.spread) ? fmtBRL.format(st.spread) : '—');
+  const bidDisp = Number.isFinite(st.bid) ? st.bid : (Number.isFinite(st.alt.bid) ? st.alt.bid : null);
+  const askDisp = Number.isFinite(st.ask) ? st.ask : (Number.isFinite(st.alt.ask) ? st.alt.ask : null);
+  const sprDisp = (Number.isFinite(bidDisp) && Number.isFinite(askDisp)) ? (askDisp - bidDisp) : (Number.isFinite(st.spread) ? st.spread : null);
+  setText(`bid-${k}`, Number.isFinite(bidDisp) ? fmtBRL.format(bidDisp) : '—');
+  setText(`ask-${k}`, Number.isFinite(askDisp) ? fmtBRL.format(askDisp) : '—');
+  setText(`spu-${k}`, Number.isFinite(sprDisp) ? fmtBRL.format(sprDisp) : '—');
 
       const tr = st.trade;
       const side = (tr?.type || tr?.TYPE || '').toString().toUpperCase();
@@ -337,6 +398,14 @@
 
       drawSpark(`sp-${k}`, st.history);
     }
+  }
+
+  function choosePrice(st){
+    const now = Date.now();
+    const freshMs = 2 * REFRESH_MS;
+    if(Number.isFinite(st.last) && st.lastAt && (now - st.lastAt) < freshMs) return st.last;
+    if(Number.isFinite(st.alt.last) && st.alt.at && (now - st.alt.at) < freshMs) return st.alt.last;
+    return Number.isFinite(st.last) ? st.last : (Number.isFinite(st.alt.last) ? st.alt.last : NaN);
   }
 
   function setText(id, txt){ const el = document.getElementById(id); if(el) el.textContent = txt; }
@@ -412,7 +481,13 @@
     _isRunning = true;
     try{ await cycle(); }
     catch(e){ console.error('cycle erro:', e); }
-    finally{ _isRunning = false; scheduleNext(nextDelay()); }
+    finally{
+      try{
+        // alterna atualizações leves da Binance entre ciclos
+        if((cycleCount % 2) === 1){ await fetchBinanceLight(); render(); }
+      }catch(e){ console.error('binance erro:', e); }
+      _isRunning = false; scheduleNext(nextDelay());
+    }
   }
   // kick
   runCycle();
