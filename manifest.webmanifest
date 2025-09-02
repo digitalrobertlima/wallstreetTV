@@ -1,7 +1,7 @@
 {
   "name": "MESA • WallStreetTV Crypto",
   "short_name": "WallStreetTV",
-  "description": "Painel estilo TV para cripto (BRL) com dados em tempo real da BitPreço.",
+  "description": "Painel estilo TV para cripto (BRL) com dados em tempo real multi-fonte (BitPreço, Binance, CoinGecko).",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
