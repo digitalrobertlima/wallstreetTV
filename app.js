@@ -698,7 +698,17 @@
   if(diagBtn) diagBtn.addEventListener('click', toggleDiag); if(diagClose) diagClose.addEventListener('click', toggleDiag); renderDiag();
 
   // ===== SW registro =========================================================
-  if('serviceWorker' in navigator){ window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(()=>{}); }); }
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', async () => {
+      try{
+        const reg = await navigator.serviceWorker.register('./sw.js');
+        // Ask current controller to warmup cache with fresh assets
+        if(navigator.serviceWorker.controller){ navigator.serviceWorker.controller.postMessage({ type:'warmup' }); }
+        // Also request an update check proactively
+        if(reg && reg.update){ try{ reg.update(); }catch{} }
+      }catch{}
+    });
+  }
 
   // ===== Erros globais =======================================================
   window.addEventListener('unhandledrejection', (e)=>{ NET_ERR = true; setNet(false); recordError(e.reason || e); renderDiag(); chimeError(); });

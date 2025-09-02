@@ -23,6 +23,29 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-add-commit-push-network-first",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"feat(sw): network-first for app shell with offline fallback; navigation preload; warmup; proactive update",
+				"&&",
+				"git",
+				"push"
+			],
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

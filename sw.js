@@ -3,10 +3,12 @@
   - Cache static shell for offline startup
   - SWR (stale-while-revalidate) leve para GET de APIs públicas, com TTL curto
 */
-const VERSION = 'v0.0.7';
+const VERSION = 'v0.0.7-1';
 const STATIC_CACHE = `wstv-static-${VERSION}`;
 const STATIC_ASSETS = [
   './', // index.html
+  './styles.css',
+  './app.js',
   './manifest.webmanifest'
   // Note: icons are data URLs; nothing else to pre-cache
 ];
@@ -21,7 +23,14 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.map((k) => (k !== STATIC_CACHE && k.startsWith('wstv-static-') ? caches.delete(k) : undefined)))).then(() => self.clients.claim())
+    (async () => {
+      // Clean older static caches
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => (k !== STATIC_CACHE && k.startsWith('wstv-static-') ? caches.delete(k) : undefined)));
+      // Enable navigation preload for faster network-first navigations
+      try{ if(self.registration && self.registration.navigationPreload){ await self.registration.navigationPreload.enable(); } }catch{}
+      await self.clients.claim();
+    })()
   );
 });
 
@@ -51,10 +60,37 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin navigations and static files
   const isSameOrigin = url.origin === self.location.origin;
   const isNavigate = event.request.mode === 'navigate';
-  if (isSameOrigin && (isNavigate || url.pathname === '/' || url.pathname.endsWith('manifest.webmanifest'))) {
-    event.respondWith(
-      fetchWithTimeout(event.request, 6000).catch(() => caches.match('./'))
-    );
+  const dest = event.request.destination;
+  // Network-first for navigations and app shell assets, with cache fallback
+  if (isSameOrigin && (isNavigate || dest === 'document')) {
+    event.respondWith((async () => {
+      const cache = await caches.open(STATIC_CACHE);
+      try{
+        const preload = event.preloadResponse ? await event.preloadResponse : undefined;
+        const netRes = preload || await fetchWithTimeout(event.request, 8000);
+        if(netRes && netRes.ok){ try{ await cache.put('./', netRes.clone()); }catch{} }
+        return netRes;
+      }catch{
+        const cached = await cache.match('./');
+        if(cached) return cached;
+        return caches.match('./');
+      }
+    })());
+    return;
+  }
+  if (isSameOrigin && (dest === 'script' || dest === 'style' || dest === 'font' || dest === 'image')) {
+    event.respondWith((async () => {
+      const cache = await caches.open(STATIC_CACHE);
+      try{
+        const res = await fetchWithTimeout(event.request, 8000);
+        if(res && res.ok){ try{ await cache.put(event.request, res.clone()); }catch{} }
+        return res;
+      }catch{
+        const cached = await cache.match(event.request);
+        if(cached) return cached;
+        throw new Error('offline');
+      }
+    })());
     return;
   }
   // SWR para APIs GET: entregar cache fresco (<= TTL) quando disponível, e revalidar ao fundo
@@ -86,5 +122,24 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request);
     })());
     return;
+  }
+});
+
+// Warmup: prefetch and refresh static assets on demand
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if(!data || typeof data !== 'object') return;
+  if(data.type === 'warmup'){
+    event.waitUntil((async () => {
+      try{
+        const cache = await caches.open(STATIC_CACHE);
+        await Promise.all(STATIC_ASSETS.map(async (path) => {
+          try{
+            const res = await fetchWithTimeout(path, 8000);
+            if(res && res.ok){ await cache.put(path, res.clone()); }
+          }catch{ /* ignore single asset failures */ }
+        }));
+      }catch{ /* ignore */ }
+    })());
   }
 });
