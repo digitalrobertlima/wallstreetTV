@@ -88,6 +88,10 @@
   const moodBar = document.getElementById('moodBar');
   const soundBtn = document.getElementById('soundBtn');
   const intensityInput = document.getElementById('intensity');
+  // Install banner elements
+  const installBanner = document.getElementById('installBanner');
+  const ibInstall = document.getElementById('ibInstall');
+  const ibDismiss = document.getElementById('ibDismiss');
 
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
   if(versionBadge) versionBadge.textContent = APP_VERSION;
@@ -145,6 +149,48 @@
   window.addEventListener('visibilitychange', updatePwaBadge);
   window.addEventListener('resize', updatePwaBadge);
   window.addEventListener('appinstalled', updatePwaBadge);
+
+  // ===== PWA Install Banner (retorno após 1h) ===============================
+  const LS_KEYS = {
+    snoozeAt: 'wstv_install_snooze_at',
+    installed: 'wstv_install_installed',
+    declinedCount: 'wstv_install_declined'
+  };
+  let deferredPrompt = null;
+  function shouldShowInstallBanner(){
+    // Não mostrar se já instalado
+    if(isInstalledContext()) return false;
+    // Guardar último acesso e considerar retorno após 1h
+    let snoozeAt = 0; try{ snoozeAt = Number(localStorage.getItem(LS_KEYS.snoozeAt)) || 0; }catch{}
+    const now = Date.now();
+    const oneHour = 60*60*1000;
+    if(!snoozeAt) return true; // primeira visita após carregar (sem snooze registrado)
+    return (now - snoozeAt) >= oneHour;
+  }
+  function markSnooze(){ try{ localStorage.setItem(LS_KEYS.snoozeAt, String(Date.now())); }catch{} }
+  function showInstallBanner(){ if(!installBanner) return; installBanner.hidden = false; markSnooze(); }
+  function hideInstallBanner(){ if(!installBanner) return; installBanner.hidden = true; }
+
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    // Previna prompt automático; guardamos para disparar via banner
+    e.preventDefault(); deferredPrompt = e; if(shouldShowInstallBanner()) showInstallBanner();
+  });
+  window.addEventListener('appinstalled', ()=>{ try{ localStorage.setItem(LS_KEYS.installed,'1'); }catch{} hideInstallBanner(); });
+  // Se o navegador não disparar beforeinstallprompt (ex: iOS), ainda assim ofereça se não instalado
+  document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(()=>{ if(shouldShowInstallBanner()) showInstallBanner(); }, 1500); });
+
+  if(ibInstall){ ibInstall.addEventListener('click', async ()=>{
+    if(deferredPrompt && deferredPrompt.prompt){ try{ deferredPrompt.prompt(); const choice = await deferredPrompt.userChoice; if(choice && choice.outcome === 'accepted'){ hideInstallBanner(); try{ localStorage.setItem(LS_KEYS.installed,'1'); }catch{} } else { markSnooze(); hideInstallBanner(); } }catch{ markSnooze(); hideInstallBanner(); } finally { deferredPrompt = null; } }
+    else {
+      // Sem beforeinstallprompt (iOS Safari / desktop não suportado): mostrar instruções em tooltip simples
+      markSnooze(); hideInstallBanner();
+      try{
+        const msg = 'Para instalar: use “Adicionar à Tela de Início” no menu do navegador.';
+        ibInstall.title = msg; ibInstall.blur();
+      }catch{}
+    }
+  }); }
+  if(ibDismiss){ ibDismiss.addEventListener('click', ()=>{ markSnooze(); hideInstallBanner(); try{ const n = Number(localStorage.getItem(LS_KEYS.declinedCount))||0; localStorage.setItem(LS_KEYS.declinedCount, String(n+1)); }catch{} }); }
 
   // ===== UI Build ===========================================================
   const tiles = {};
