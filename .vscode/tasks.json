@@ -195,6 +195,26 @@
 				"push"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-delta-no-ellipsis",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"fix(ui): show full delta text on cards (no ellipsis); smarter price fit avoids hiding values; responsive wrap on small screens",
+				"&&",
+				"git",
+				"push"
+			],
+			"group": "build"
 		}
 	]
 }

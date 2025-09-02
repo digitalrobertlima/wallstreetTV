@@ -812,7 +812,31 @@
   }
 
   function setPrice(id, value){ const el = document.getElementById(id); if(!el) return; const parent = el.parentElement; if(!parent){ el.textContent = '—'; return; } if(!Number.isFinite(value)){ el.textContent = '—'; return; } el.style.fontSize = ''; el.textContent = fmtBRL.format(value); fitToRow(el, parent); }
-  function fitToRow(el, parent){ const row = parent; const siblings = Array.from(row.children).filter(n=> n !== el); const deltaEl = siblings.find(n=> n.classList.contains('delta')); const gap = 10; const deltaW = deltaEl ? deltaEl.getBoundingClientRect().width : 0; const maxW = Math.max(0, row.clientWidth - deltaW - gap - 2); if(el.scrollWidth <= maxW) return; let fs = parseFloat(getComputedStyle(el).fontSize) || 32; let guard = 0; while(el.scrollWidth > maxW && fs > 8 && guard < 20){ fs = Math.max(8, Math.floor(fs * 0.9)); el.style.fontSize = fs + 'px'; guard++; } }
+  function fitToRow(el, parent){
+    const row = parent;
+    const siblings = Array.from(row.children).filter(n=> n !== el);
+    const deltaEl = siblings.find(n=> n.classList.contains('delta'));
+    const gap = 10;
+    let deltaW = 0;
+    if(deltaEl){
+      // Only subtract delta width if it's on the same line as price
+      try{
+        const eRect = el.getBoundingClientRect();
+        const dRect = deltaEl.getBoundingClientRect();
+        const sameLine = Math.abs(eRect.top - dRect.top) < Math.max(8, eRect.height*0.5);
+        deltaW = sameLine ? dRect.width : 0;
+      }catch{ deltaW = 0; }
+    }
+    const maxW = Math.max(0, row.clientWidth - deltaW - gap - 2);
+    if(el.scrollWidth <= maxW) return;
+    let fs = parseFloat(getComputedStyle(el).fontSize) || 32;
+    let guard = 0;
+    while(el.scrollWidth > maxW && fs > 12 && guard < 20){
+      fs = Math.max(12, Math.floor(fs * 0.9));
+      el.style.fontSize = fs + 'px';
+      guard++;
+    }
+  }
   function choosePrice(st){
     const now = Date.now(); const freshMs = 2 * REFRESH_MS;
     const cands = [];
