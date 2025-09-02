@@ -111,6 +111,7 @@
   const rg4 = document.getElementById('rg-4h');
   const rg24 = document.getElementById('rg-24h');
   const chartTip = document.getElementById('chartTip');
+  const marketsBtn = document.getElementById('marketsBtn');
   // Install banner elements
   const installBanner = document.getElementById('installBanner');
   const ibInstall = document.getElementById('ibInstall');
@@ -130,6 +131,9 @@
   function applyIntensity(){ const root = document.documentElement; root.style.setProperty('--intensity', String(INTENSITY)); }
   applyIntensity();
   if(intensityInput){ intensityInput.value = String(INTENSITY); intensityInput.addEventListener('input', ()=>{ const v = Number(intensityInput.value); INTENSITY = Math.max(0, Math.min(100, v)); applyIntensity(); try{ localStorage.setItem('wstv_intensity', String(INTENSITY)); }catch{} }); }
+
+  // Navegação para página de mercados
+  if(marketsBtn){ marketsBtn.addEventListener('click', ()=>{ try{ window.location.href = './markets.html'; }catch{ location.assign('./markets.html'); } }); }
 
   // ===== Som (WebAudio) =====================================================
   const SOUND = { enabled:false, ctx:null, master:null, _lastAt:0, vol:0.15 };

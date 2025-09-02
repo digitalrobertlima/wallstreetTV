@@ -115,6 +115,26 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-markets-clocks",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"feat(markets): live world markets clocks page + nav wiring; SW on markets page",
+				"&&",
+				"git",
+				"push"
+			],
+			"group": "build"
 		}
 	]
 }
