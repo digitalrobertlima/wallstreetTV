@@ -46,6 +46,29 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-add-commit-push-update-banner",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"feat(pwa): update available banner with skipWaiting + controllerchange reload",
+				"&&",
+				"git",
+				"push"
+			],
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

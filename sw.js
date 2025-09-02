@@ -129,6 +129,10 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   const data = event.data;
   if(!data || typeof data !== 'object') return;
+  if(data.type === 'SKIP_WAITING'){
+    self.skipWaiting();
+    return;
+  }
   if(data.type === 'warmup'){
     event.waitUntil((async () => {
       try{

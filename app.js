@@ -92,6 +92,10 @@
   const installBanner = document.getElementById('installBanner');
   const ibInstall = document.getElementById('ibInstall');
   const ibDismiss = document.getElementById('ibDismiss');
+  // Update banner elements
+  const updateBanner = document.getElementById('updateBanner');
+  const ubReload = document.getElementById('ubReload');
+  const ubLater = document.getElementById('ubLater');
 
   intervalText.textContent = Math.round(REFRESH_MS/1000)+"s";
   if(versionBadge) versionBadge.textContent = APP_VERSION;
@@ -706,6 +710,26 @@
         if(navigator.serviceWorker.controller){ navigator.serviceWorker.controller.postMessage({ type:'warmup' }); }
         // Also request an update check proactively
         if(reg && reg.update){ try{ reg.update(); }catch{} }
+        // Show update banner when a new SW is waiting
+        function showUpdate(){ if(updateBanner) updateBanner.hidden = false; }
+        function hideUpdate(){ if(updateBanner) updateBanner.hidden = true; }
+        if(reg){
+          if(reg.waiting){ showUpdate(); }
+          reg.addEventListener('updatefound', () => {
+            const nw = reg.installing;
+            if(!nw) return;
+            nw.addEventListener('statechange', () => {
+              if(nw.state === 'installed' && reg.waiting){ showUpdate(); }
+            });
+          });
+        }
+        // On click, tell waiting worker to activate immediately
+        if(ubReload){ ubReload.addEventListener('click', () => {
+          try{ if(reg && reg.waiting){ reg.waiting.postMessage({ type:'SKIP_WAITING' }); } }catch{}
+        }); }
+        if(ubLater){ ubLater.addEventListener('click', () => hideUpdate()); }
+        // When controller changes, reload to pick the fresh version
+        navigator.serviceWorker.addEventListener('controllerchange', () => { window.location.reload(); });
       }catch{}
     });
   }
