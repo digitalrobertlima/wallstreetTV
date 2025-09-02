@@ -232,9 +232,37 @@
   const tiles = {};
   // memória do último preço exibido na fita por par para disparar pulse sutil
   const TAPE_LAST = Object.create(null);
-  // controle da fita para evitar 'pulos' ao re-renderizar
-  let TAPE_LAST_HTML = '';
+  // controle da fita: construir uma vez e atualizar em place (evita reset visual)
   let TAPE_START_TS = performance.now();
+  let TAPE_BUILT = false;
+  const TAPE_ELEMS = []; // [{ pair, aPri, aSig, bPri, bSig }]
+  function buildTape(){
+    if(!tapeA || !tapeB || TAPE_BUILT) return;
+    tapeA.innerHTML = '';
+    tapeB.innerHTML = '';
+    TAPE_ELEMS.length = 0;
+    COINS.forEach((c, idx) => {
+      const makeTick = () => {
+        const tick = document.createElement('span'); tick.className = 'tick';
+        const sym = document.createElement('span'); sym.className = 'sym'; sym.textContent = c.symbol;
+        const pri = document.createElement('span'); pri.className = 'pri blink flat'; pri.textContent = '—';
+        const sig = document.createElement('span'); sig.className = 'sig'; sig.textContent = '•';
+        tick.appendChild(sym); tick.appendChild(pri); tick.appendChild(sig);
+        return { tick, pri, sig };
+      };
+      const a = makeTick(); const b = makeTick();
+      tapeA.appendChild(a.tick);
+      tapeB.appendChild(b.tick);
+      // separador entre itens (evita no último para largura precisa)
+      if(idx < COINS.length - 1){
+        const sepA = document.createElement('span'); sepA.className = 'sep'; sepA.textContent = '·'; tapeA.appendChild(sepA);
+        const sepB = document.createElement('span'); sepB.className = 'sep'; sepB.textContent = '·'; tapeB.appendChild(sepB);
+      }
+      TAPE_ELEMS.push({ pair:c.pair, aPri:a.pri, aSig:a.sig, bPri:b.pri, bSig:b.sig });
+    });
+    TAPE_BUILT = true;
+    tuneTickerSpeed(true);
+  }
   // tempo e clima
   const WEATHER_CITIES = [
     { key:'BSB', name:'Brasília',       lat:-15.7939, lon:-47.8828 },
@@ -480,33 +508,30 @@
 
   // ===== RENDER ==============================================================
   function render(){
-    // fita/marquee estilizada
-    const items = COINS.map(c => {
-      const st = S[c.pair];
+    // fita: construir uma vez e atualizar em place
+    buildTape();
+    for(const ref of TAPE_ELEMS){
+      const st = S[ref.pair];
       const priceNum = choosePrice(st);
       const price = Number.isFinite(priceNum) ? fmtBRL.format(priceNum) : '—';
       const d = (st.prev && st.last) ? (st.last - st.prev) : 0;
-      const cls = d>0 ? 'up' : d<0 ? 'down' : '';
-      // decidir direção da piscada contínua
+      const sigCls = d>0 ? 'up' : d<0 ? 'down' : '';
       let blinkCls = 'flat';
-      const prevTape = TAPE_LAST[c.pair];
+      const prevTape = TAPE_LAST[ref.pair];
       if(Number.isFinite(priceNum) && Number.isFinite(prevTape)){
         if(priceNum > prevTape) blinkCls = 'up';
         else if(priceNum < prevTape) blinkCls = 'down';
         else blinkCls = 'flat';
       }
-      if(Number.isFinite(priceNum)) TAPE_LAST[c.pair] = priceNum;
-      return `<span class="tick"><span class="sym">${c.symbol}</span><span class="pri blink ${blinkCls}">${price}</span><span class="sig ${cls}">${d>0?'▲':d<0?'▼':'•'}</span></span>`;
-    });
-    const html = items.join('<span class="sep">·</span>');
-    // Preenche duas execuções para loop contínuo, evitando updates desnecessários (que reiniciam a animação)
-    if(tapeA && tapeB){
-      if(html !== TAPE_LAST_HTML){
-        tapeA.innerHTML = html; tapeB.innerHTML = html;
-        TAPE_LAST_HTML = html;
-        // manter fase da animação (defasagem negativa conforme tempo decorrido)
-        tuneTickerSpeed(true);
-      }
+      if(Number.isFinite(priceNum)) TAPE_LAST[ref.pair] = priceNum;
+      // atualizar preço + classes
+      ref.aPri.textContent = price; ref.bPri.textContent = price;
+      ref.aPri.className = `pri blink ${blinkCls}`;
+      ref.bPri.className = `pri blink ${blinkCls}`;
+      // atualizar seta/sinal
+      ref.aSig.className = `sig ${sigCls}`; ref.bSig.className = `sig ${sigCls}`;
+      const arrow = d>0 ? '▲' : d<0 ? '▼' : '•';
+      ref.aSig.textContent = arrow; ref.bSig.textContent = arrow;
     }
 
     // tiles
