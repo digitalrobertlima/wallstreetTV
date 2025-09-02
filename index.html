@@ -58,7 +58,9 @@
     .id{display:flex; align-items:center; gap:10px}
     .ticker{font-size: clamp(18px, 4vw, 28px); font-weight:800; letter-spacing:1px}
     .pair{color:var(--muted); font-size: clamp(11px, 1.6vw, 12px)}
-    .price{font-size: clamp(22px, 5.4vw, 44px); font-weight:900; line-height:1.1}
+  .price{font-size: clamp(20px, 4.8vw, 40px); font-weight:900; line-height:1.1}
+  /* prevenir overflow do preço em linhas flex */
+  .row .price{min-width:0; flex:1 1 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
     .delta{font-weight:700}
     .delta.up{color:var(--up)}
     .delta.down{color:var(--down)}
@@ -397,7 +399,25 @@
       setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
 
       drawSpark(`sp-${k}`, st.history);
+      fitPrice(`p-${k}`);
     }
+  }
+
+  // Reduz a fonte do preço se estiver estourando o container
+  function fitPrice(id){
+    const el = document.getElementById(id); if(!el) return;
+    const parent = el.parentElement; if(!parent) return;
+    // reset base
+    el.style.fontSize = '';
+    // mede
+    const maxW = parent.clientWidth - 4;
+    if(el.scrollWidth <= maxW) return;
+    // escala linear simples dentro de limites
+    const style = getComputedStyle(el);
+    const fsPx = parseFloat(style.fontSize) || 32;
+    const ratio = Math.max(0.75, Math.min(1, maxW / el.scrollWidth));
+    const newFs = Math.max(16, Math.floor(fsPx * ratio));
+    el.style.fontSize = newFs + 'px';
   }
 
   function choosePrice(st){
