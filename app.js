@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = 'v0.0.10';
+  const APP_VERSION = 'v0.0.11';
   // ===== CONFIG ==============================================================
   const REFRESH_MS = 35_000; // 35 segundos
   const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
@@ -888,7 +888,7 @@
           NEWS.idx = (NEWS.idx + 1) % Math.max(1, items.length);
           return { pt, int1, int2 };
         };
-        const { pt, int1, int2 } = pick();
+  const { pt, int1, int2 } = pick();
         const nWrap = document.getElementById(`news-${k}`);
         const ptS = document.getElementById(`news-src-pt-${k}`);
         const ptT = document.getElementById(`news-ttl-pt-${k}`);
