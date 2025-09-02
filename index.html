@@ -106,10 +106,10 @@
     .sym{color:#d1d7e0; font-size:13px; letter-spacing:.4px}
     .pri{font-size:14px}
     /* blink contínuo no ticker (up/down/flat) */
-    .pri.blink{border-radius:6px; padding:2px 6px}
-    .pri.blink.up{animation: blinkUp 1.2s ease-in-out infinite}
-    .pri.blink.down{animation: blinkDown 1.2s ease-in-out infinite}
-    .pri.blink.flat{animation: blinkFlat 1.8s ease-in-out infinite}
+  .pri.blink{border-radius:6px; padding:2px 6px}
+  .pri.blink.up{animation: blinkUp 1.2s ease-in-out infinite; color: var(--up)}
+  .pri.blink.down{animation: blinkDown 1.2s ease-in-out infinite; color: var(--down)}
+  .pri.blink.flat{animation: blinkFlat 1.8s ease-in-out infinite; color: #cbd5e1}
     @keyframes blinkUp{0%,100%{background:transparent}50%{background:rgba(0,200,83,.18)}}
     @keyframes blinkDown{0%,100%{background:transparent}50%{background:rgba(255,59,48,.18)}}
     @keyframes blinkFlat{0%,100%{background:transparent}50%{background:rgba(255,255,255,.08)}}
