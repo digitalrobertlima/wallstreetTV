@@ -175,6 +175,26 @@
 				"push"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-markets-responsive",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"feat(markets): responsive layout like index cards; move styles to global CSS",
+				"&&",
+				"git",
+				"push"
+			],
+			"group": "build"
 		}
 	]
 }

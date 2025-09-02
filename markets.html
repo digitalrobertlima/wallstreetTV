@@ -7,23 +7,9 @@
   <title>Mercados Mundiais — Relógios ao vivo</title>
   <meta name="description" content="Relógios ao vivo indicando horários de abertura e fechamento dos principais mercados mundiais." />
   <link rel="stylesheet" href="./styles.css" />
-  <style>
-    body{background:var(--bg); color:var(--ink);}
-    .wrap{max-width:1200px; margin:0 auto; padding:20px}
-    header{display:flex; align-items:center; justify-content:space-between; gap:12px}
-    .back{all:unset; cursor:pointer; padding:10px 14px; border-radius:12px; background:#1a202c; color:#e6e6e6; font-weight:600}
-    .grid{display:grid; gap:var(--grid-gap); grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); padding-top:18px}
-    .clock{background:var(--card); border-radius:16px; padding:16px; box-shadow: 0 8px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04)}
-    .clock h2{margin:0 0 8px; font-size:18px}
-    .clock .now{font-size:28px; font-weight:800}
-    .clock .sess{margin-top:8px; font-size:13px; color:var(--muted)}
-    .open{color:var(--up); font-weight:800}
-    .closed{color:var(--down); font-weight:800}
-    .legend{font-size:12px; color:var(--muted); margin-top:4px}
-  </style>
 </head>
 <body>
-  <div class="wrap">
+  <div class="app">
     <header>
       <h1>Mercados Mundiais</h1>
       <a class="back" href="./index.html">← Voltar</a>

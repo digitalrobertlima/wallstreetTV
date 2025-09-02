@@ -197,3 +197,13 @@ footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space
 .update-banner button:hover{filter:brightness(1.05)}
 .update-banner button:active{transform:translateY(1px)}
 @media (max-width:560px){ .update-banner .ub-content{flex-direction:column; align-items:stretch} .update-banner .ub-actions{justify-content:flex-end} }
+
+/* Markets page cards */
+.back{all:unset; cursor:pointer; padding:10px 14px; border-radius:12px; background:#1a202c; color:#e6e6e6; font-weight:600}
+.clock{background: var(--card); border-radius:18px; padding:18px; position:relative; box-shadow: 0 8px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04); display:flex; flex-direction:column; gap:10px; min-height: 140px;}
+.clock h2{margin:0; font-size: clamp(16px, 2.4vw, 18px)}
+.clock .now{font-size: clamp(20px, 4vw, 28px); font-weight:800}
+.clock .sess{margin-top:4px; font-size:13px; color:var(--muted)}
+.legend{font-size:12px; color:var(--muted)}
+.open{color:var(--up); font-weight:800}
+.closed{color:var(--down); font-weight:800}
