@@ -94,13 +94,20 @@
   if(intensityInput){ intensityInput.value = String(INTENSITY); intensityInput.addEventListener('input', ()=>{ const v = Number(intensityInput.value); INTENSITY = Math.max(0, Math.min(100, v)); applyIntensity(); try{ localStorage.setItem('wstv_intensity', String(INTENSITY)); }catch{} }); }
 
   // ===== Som (WebAudio) =====================================================
-  const SOUND = { enabled:false, ctx:null, master:null, _lastAt:0, vol:0.04 };
+  const SOUND = { enabled:false, ctx:null, master:null, _lastAt:0, vol:0.15 };
   function setSoundUI(){ if(!soundBtn) return; soundBtn.setAttribute('aria-pressed', String(!!SOUND.enabled)); soundBtn.textContent = SOUND.enabled ? '🔊 Som' : '🔇 Som'; }
   (function loadSoundPref(){ try{ const v = localStorage.getItem('wstv_sound'); SOUND.enabled = (v === 'on'); }catch{} setSoundUI(); })();
   async function ensureAudio(){ if(!SOUND.ctx){ try{ const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return false; const ctx = new AC(); const gain = ctx.createGain(); gain.gain.value = SOUND.enabled ? SOUND.vol : 0; gain.connect(ctx.destination); SOUND.ctx = ctx; SOUND.master = gain; }catch{ return false; } } if(SOUND.ctx && SOUND.ctx.state === 'suspended'){ try{ await SOUND.ctx.resume(); }catch{} } return !!SOUND.ctx; }
-  function toggleSound(){ SOUND.enabled = !SOUND.enabled; try{ localStorage.setItem('wstv_sound', SOUND.enabled ? 'on' : 'off'); }catch{} setSoundUI(); if(SOUND.master){ SOUND.master.gain.value = SOUND.enabled ? SOUND.vol : 0; } }
-  function blip(dir, intensity){ if(!SOUND.enabled || document.hidden) return; if(!SOUND.ctx || !SOUND.master) return; const now = SOUND.ctx.currentTime; if((now - SOUND._lastAt) < 0.12) return; SOUND._lastAt = now; try{ const osc = SOUND.ctx.createOscillator(); const g = SOUND.ctx.createGain(); osc.type = 'sine'; const clampI = Math.max(0.05, Math.min(3, Number(intensity)||0.2)); const baseUp = 880; const baseDown = 320; const freq = dir==='up' ? baseUp * (1 + 0.25*Math.log2(1+clampI)) : dir==='down' ? baseDown * (1 + 0.25*Math.log2(1+clampI)) : 600; osc.frequency.setValueAtTime(freq, now); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(Math.min(0.25, SOUND.vol*1.4), now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.13 + 0.03*Math.random()); osc.connect(g); g.connect(SOUND.master); osc.start(now); osc.stop(now + 0.18); }catch{} }
-  function chimeError(){ if(!SOUND.enabled || !SOUND.ctx || !SOUND.master) return; const now = SOUND.ctx.currentTime; try{ const o = SOUND.ctx.createOscillator(); const g = SOUND.ctx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(660, now); o.frequency.exponentialRampToValueAtTime(330, now + 0.25); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(Math.min(0.3, SOUND.vol*1.6), now + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35); o.connect(g); g.connect(SOUND.master); o.start(now); o.stop(now + 0.4); }catch{} }
+  function toggleSound(){
+    SOUND.enabled = !SOUND.enabled;
+    try{ localStorage.setItem('wstv_sound', SOUND.enabled ? 'on' : 'off'); }catch{}
+    setSoundUI();
+    if(SOUND.master){ SOUND.master.gain.value = SOUND.enabled ? SOUND.vol : 0; }
+    // Confirmação sonora ao habilitar
+    if(SOUND.enabled){ setTimeout(()=>{ blip('up', 0.2); }, 30); }
+  }
+  function blip(dir, intensity){ if(!SOUND.enabled || document.hidden) return; if(!SOUND.ctx || !SOUND.master) return; const now = SOUND.ctx.currentTime; if((now - SOUND._lastAt) < 0.12) return; SOUND._lastAt = now; try{ const osc = SOUND.ctx.createOscillator(); const g = SOUND.ctx.createGain(); osc.type = 'sine'; const clampI = Math.max(0.05, Math.min(3, Number(intensity)||0.2)); const baseUp = 880; const baseDown = 320; const freq = dir==='up' ? baseUp * (1 + 0.25*Math.log2(1+clampI)) : dir==='down' ? baseDown * (1 + 0.25*Math.log2(1+clampI)) : 600; osc.frequency.setValueAtTime(freq, now); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(1.0, now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.13 + 0.03*Math.random()); osc.connect(g); g.connect(SOUND.master); osc.start(now); osc.stop(now + 0.18); }catch{} }
+  function chimeError(){ if(!SOUND.enabled || !SOUND.ctx || !SOUND.master) return; const now = SOUND.ctx.currentTime; try{ const o = SOUND.ctx.createOscillator(); const g = SOUND.ctx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(660, now); o.frequency.exponentialRampToValueAtTime(330, now + 0.25); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(1.0, now + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35); o.connect(g); g.connect(SOUND.master); o.start(now); o.stop(now + 0.4); }catch{} }
   if(soundBtn){ soundBtn.addEventListener('click', async ()=>{ await ensureAudio(); toggleSound(); }); }
 
   // Mostrar badge PWA somente quando de fato em modo instalado/standalone
