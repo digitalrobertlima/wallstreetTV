@@ -92,6 +92,29 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-force-flag",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"chore(pwa): add FORCE install flag via ?install or localStorage for testing",
+				"&&",
+				"git",
+				"push"
+			],
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

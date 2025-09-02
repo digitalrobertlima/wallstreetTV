@@ -160,10 +160,20 @@
     installed: 'wstv_install_installed',
     declinedCount: 'wstv_install_declined'
   };
+  const FORCE_INSTALL = (()=>{
+    try{
+      const params = new URLSearchParams(location.search);
+      if(params.has('install')) return true;
+      const ls = localStorage.getItem('wstv_install_force');
+      return ls === '1';
+    }catch{ return false; }
+  })();
   let deferredPrompt = null;
   function shouldShowInstallBanner(){
     // Não mostrar se já instalado
     if(isInstalledContext()) return false;
+    // Modo forçado para testes
+    if(FORCE_INSTALL) return true;
     // Guardar último acesso e considerar retorno após 1h
     let snoozeAt = 0; try{ snoozeAt = Number(localStorage.getItem(LS_KEYS.snoozeAt)) || 0; }catch{}
     const now = Date.now();
