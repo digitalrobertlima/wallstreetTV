@@ -65,10 +65,12 @@ button:hover{background:#232b3a}
   display:flex; flex-direction:column; gap:14px; min-height: 220px;
 }
 .row{display:flex; align-items:center; justify-content:space-between; gap:12px}
+.row, .id, .trade{min-width:0}
 .row-tight{gap:10px}
 .align-end{align-items:flex-end}
 .tile .row > .row{min-width:0}
 .id{display:flex; align-items:center; gap:10px}
+.pair{min-width:0; overflow:hidden; text-overflow:ellipsis; display:block}
 .aud-btn{all:unset; cursor:pointer; background:#0d121a; color:#cbd5e1; padding:4px 6px; border-radius:8px; font-size:12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06)}
 .aud-btn[aria-pressed="true"]{background:#223047}
 .solo-btn{all:unset; cursor:pointer; background:#0d121a; color:#cbd5e1; padding:4px 6px; border-radius:8px; font-size:12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06)}
@@ -87,11 +89,13 @@ button:hover{background:#232b3a}
 .kpis{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px}
 .kpi{background:#0b0f16; border-radius:12px; padding:8px 10px}
 .kpi .label{color:var(--muted); font-size:12px}
-.kpi .value{font-weight:700; font-size:14px; margin-top:2px}
+.kpi .value{font-weight:700; font-size:14px; margin-top:2px; min-width:0; overflow:hidden; text-overflow:ellipsis}
 .book{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px}
+.book .value{min-width:0; overflow:hidden; text-overflow:ellipsis}
 .badge{font-size:11px; padding:4px 8px; border-radius:999px; background:#0d121a; color:var(--muted);}
 canvas.spark{width:100%; height:56px; border-radius:10px; background:linear-gradient(180deg,#0c1118,#0a0d12); box-shadow: inset 0 0 0 1px rgba(255,255,255,.03)}
-.trade{display:flex; gap:10px; align-items:center; font-size:13px; color:var(--muted)}
+.trade{display:flex; gap:10px; align-items:center; font-size:13px; color:var(--muted); flex-wrap:wrap; row-gap:4px}
+.trade > span{min-width:0}
 .pill{padding:4px 8px; border-radius:8px; font-weight:700}
 .pill.buy{background: rgba(0,200,83,.12); color: var(--up)}
 .pill.sell{background: rgba(255,59,48,.12); color: var(--down)}
@@ -147,9 +151,17 @@ footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space
 .diag-toggle{position:fixed; right:8px; bottom:8px; width:36px; height:36px; border-radius:50%; border:none; background:#0d121a; color:#cbd5e1; box-shadow:0 4px 16px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.06); cursor:pointer; z-index:11}
 /* PWA badge */
 .pwa-badge{display:inline-block; margin-top:4px; font-size:11px; padding:4px 8px; border-radius:999px; background:#0d121a; color:#9ee493; border:1px solid rgba(255,255,255,.08)}
+.pwa-badge[hidden]{display:none !important}
 /* LIVE badge */
 .live-badge{display:inline-block; font-size:12px; font-weight:800; letter-spacing:.6px; padding:6px 10px; border-radius:999px; background:#210a0a; color:#ff6b6b; border:1px solid rgba(255,107,107,.35); box-shadow:0 0 0 0 rgba(255,107,107,.35); animation: livePulse 1.8s ease-in-out infinite}
 @keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(255,107,107,.35)}70%{box-shadow:0 0 0 10px rgba(255,107,107,0)}100%{box-shadow:0 0 0 0 rgba(255,107,107,0)}}
 @media (prefers-reduced-motion: reduce){.live-badge{animation:none}}
 /* noscript */
 .noscript-warning{padding:12px; background:#1a202c; color:#e8e6e3; text-align:center}
+
+/* Responsive guards */
+@media (max-width: 360px){
+  .kpi .label{font-size:11px}
+  .kpi .value{font-size:13px}
+  .trade{font-size:12px}
+}
