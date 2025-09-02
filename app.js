@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = 'v0.0.9';
+  const APP_VERSION = 'v0.0.10';
   // ===== CONFIG ==============================================================
   const REFRESH_MS = 35_000; // 35 segundos
   const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
@@ -339,7 +339,7 @@
         <div class="id">
           <div class="ticker">${c.symbol}</div>
           <span class="trend" id="ar-${c.pair}" aria-hidden="true">●</span>
-          <div class="pair">${c.label}</div>
+          <div class="pair pair-inline">${c.label}</div>
           <span class="mini-dot" id="md-${c.pair}" aria-hidden="true"></span>
         </div>
         <div class="row row-tight align-end">
@@ -349,9 +349,22 @@
       </div>
       ${c.pair==='usdt-brl' ? `
       <div class="usdt-news" id="news-${c.pair}">
-        <div class="headline">
-          <div class="source" id="news-src-${c.pair}">—</div>
-          <div class="title" id="news-ttl-${c.pair}">—</div>
+        <div class="headline multi">
+          <div class="hcol">
+            <div class="source" id="news-src-pt-${c.pair}">—</div>
+            <div class="title" id="news-ttl-pt-${c.pair}">—</div>
+          </div>
+          <div class="hcol">
+            <div class="source" id="news-src-int1-${c.pair}">—</div>
+            <div class="title" id="news-ttl-int1-${c.pair}">—</div>
+          </div>
+          <div class="hcol">
+            <div class="source" id="news-src-int2-${c.pair}">—</div>
+            <div class="title" id="news-ttl-int2-${c.pair}">—</div>
+          </div>
+        </div>
+        <div class="news-controls">
+          <button class="news-toggle" id="newsOnly-${c.pair}" aria-pressed="false" title="Exibir apenas manchetes">📰 Só manchetes</button>
         </div>
       </div>` : ''}
       <div class="kpis">
@@ -374,6 +387,7 @@
         <span id="ts-${c.pair}">—</span>
       </div>
       <div class="tile-foot">
+        <div class="pair pair-foot">${c.label}</div>
         <div class="aud-controls">
           <button class="aud-btn" id="au-${c.pair}" aria-pressed="${S[c.pair].aud? 'true':'false'}" title="Ativar som para ${c.symbol}">${S[c.pair].aud ? '🔊' : '🔇'}</button>
           <button class="solo-btn" id="so-${c.pair}" aria-pressed="${AUD_SOLO===c.pair? 'true':'false'}" title="Solo: ouvir apenas ${c.symbol}">🎧</button>
@@ -381,7 +395,7 @@
       </div>
     `;
     grid.appendChild(tile);
-    tiles[c.pair] = tile;
+  tiles[c.pair] = tile;
     // Navegação para gráfico detalhado ao clicar no card
     tile.addEventListener('click', ()=>{ try{ window.location.href = `./chart.html?pair=${encodeURIComponent(c.pair)}`; }catch{ location.assign(`./chart.html?pair=${encodeURIComponent(c.pair)}`); } });
     // Listener do botão de áudio por ativo
@@ -417,25 +431,40 @@
         try{ localStorage.setItem('wstv_aud_solo', AUD_SOLO || ''); }catch{}
       });
     }
+    // News-only toggle (USDT)
+    if(c.pair==='usdt-brl'){
+      const btnNews = tile.querySelector(`#newsOnly-${c.pair}`);
+      if(btnNews){
+        btnNews.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          NEWS.only = !NEWS.only;
+          btnNews.setAttribute('aria-pressed', String(!!NEWS.only));
+          btnNews.textContent = NEWS.only ? '📺 Voltar ao mercado' : '📰 Só manchetes';
+          if(NEWS.only){ USDT_NEWS_MODE = true; scheduleNewsOnlyTick(); }
+          else { if(_newsOnlyTimer) clearTimeout(_newsOnlyTimer); }
+          render();
+        });
+      }
+    }
   });
 
   // ===== News aggregator (10 free public RSS endpoints via AllOrigins) =====
   // 3 brasileiras + 7 internacionais
   const NEWS_SOURCES = [
     // Brasil
-    { name:'G1 Economia', url:'https://g1.globo.com/economia/rss2.xml' },
-    { name:'Estadão Economia', url:'https://economia.estadao.com.br/rss' },
-    { name:'Valor Investe', url:'https://valorinveste.globo.com/rss/ultimas/feed.xml' },
+    { name:'G1 Economia', url:'https://g1.globo.com/economia/rss2.xml', lang:'pt' },
+    { name:'Estadão Economia', url:'https://economia.estadao.com.br/rss', lang:'pt' },
+    { name:'Valor Investe', url:'https://valorinveste.globo.com/rss/ultimas/feed.xml', lang:'pt' },
     // Global
-    { name:'Reuters Business', url:'https://feeds.reuters.com/reuters/businessNews' },
-    { name:'Bloomberg Markets', url:'https://www.bloomberg.com/feeds/podcasts/etf-report.xml' },
-    { name:'Financial Times', url:'https://www.ft.com/world/us/rss' },
-    { name:'BBC Business', url:'https://feeds.bbci.co.uk/news/business/rss.xml' },
-    { name:'CNBC Top', url:'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
-    { name:'Yahoo Finance', url:'https://finance.yahoo.com/news/rss' },
-    { name:'Investing.com', url:'https://www.investing.com/rss/news_25.rss' }
+    { name:'Reuters Business', url:'https://feeds.reuters.com/reuters/businessNews', lang:'en' },
+    { name:'Bloomberg Markets', url:'https://www.bloomberg.com/feeds/podcasts/etf-report.xml', lang:'en' },
+    { name:'Financial Times', url:'https://www.ft.com/world/us/rss', lang:'en' },
+    { name:'BBC Business', url:'https://feeds.bbci.co.uk/news/business/rss.xml', lang:'en' },
+    { name:'CNBC Top', url:'https://www.cnbc.com/id/100003114/device/rss/rss.html', lang:'en' },
+    { name:'Yahoo Finance', url:'https://finance.yahoo.com/news/rss', lang:'en' },
+    { name:'Investing.com', url:'https://www.investing.com/rss/news_25.rss', lang:'en' }
   ];
-  const NEWS = { items: [], idx: 0, lastAt: 0, ttl: 10*60*1000 };
+  const NEWS = { items: [], idx: 0, lastAt: 0, ttl: 10*60*1000, only:false };
   function buildAllOriginsUrl(feed){ return `https://api.allorigins.win/get?url=${encodeURIComponent(feed)}`; }
   async function fetchRSS(feed){
     const url = buildAllOriginsUrl(feed);
@@ -465,16 +494,33 @@
     for(const src of NEWS_SOURCES){
       try{
         const arr = await fetchRSS(src.url);
-        for(const it of arr){ all.push({ source: src.name, title: it.title, link: it.link }); }
+        for(const it of arr){ all.push({ source: src.name, title: it.title, link: it.link, lang: src.lang || 'en' }); }
       }catch{}
       await sleep(120);
     }
     if(all.length){ NEWS.items = all; NEWS.lastAt = Date.now(); NEWS.idx = 0; }
   }
 
-  // Alternância USDT: 35s normal, 35s manchete
-  let USDT_NEWS_MODE = false; let _altTimer = null;
-  function scheduleUSDTAlternate(){ if(_altTimer) clearTimeout(_altTimer); _altTimer = setTimeout(()=>{ USDT_NEWS_MODE = !USDT_NEWS_MODE; render(); scheduleUSDTAlternate(); }, REFRESH_MS); }
+  // Alternância USDT: 35s normal, 35s manchete; se "só manchetes" estiver ativo, fixa news-mode e gira headlines a cada 1 minuto
+  let USDT_NEWS_MODE = false; let _altTimer = null; let _newsOnlyTimer = null;
+  const NEWS_ONLY_REFRESH_MS = 60_000;
+  function scheduleUSDTAlternate(){
+    if(_altTimer) clearTimeout(_altTimer);
+    _altTimer = setTimeout(()=>{
+      if(!NEWS.only){ USDT_NEWS_MODE = !USDT_NEWS_MODE; }
+      render();
+      scheduleUSDTAlternate();
+    }, REFRESH_MS);
+  }
+  function scheduleNewsOnlyTick(){
+    if(_newsOnlyTimer) clearTimeout(_newsOnlyTimer);
+    if(!NEWS.only) return;
+    _newsOnlyTimer = setTimeout(async ()=>{
+      try{ await refreshNews(); }catch{}
+      render();
+      scheduleNewsOnlyTick();
+    }, NEWS_ONLY_REFRESH_MS);
+  }
   scheduleUSDTAlternate();
   function canPlay(pair){ if(!SOUND.enabled) return false; if(AUD_SOLO){ return AUD_SOLO === pair; } return !!S[pair].aud; }
 
@@ -827,19 +873,44 @@
     for(const c of COINS){
       const k = c.pair, st = S[k];
       const isUSDT = (k === 'usdt-brl');
-      // Toggle news mode class on the tile for USDT
-      if(isUSDT){ const t = tiles[k]; if(t){ if(USDT_NEWS_MODE){ t.classList.add('usdt-news-mode'); } else { t.classList.remove('usdt-news-mode'); } } }
-      if(isUSDT && USDT_NEWS_MODE){
-        // Render headline instead of market data
+      if(isUSDT){
+        const tile = tiles[k];
+        if(tile){ if(USDT_NEWS_MODE || NEWS.only){ tile.classList.add('usdt-news-mode'); } else { tile.classList.remove('usdt-news-mode'); } }
+      }
+  if(isUSDT && (USDT_NEWS_MODE || NEWS.only)){
+        // Render 3 headlines: 1 PT + 2 international rotating
+        const pick = () => {
+          const items = NEWS.items || [];
+          if(!items.length) return { pt:null, int1:null, int2:null };
+          const ptItems = items.filter(i => (i.lang||'en') === 'pt');
+          const intItems = items.filter(i => (i.lang||'en') !== 'pt');
+          const pt = ptItems.length ? ptItems[(NEWS.idx) % ptItems.length] : null;
+          const int1 = intItems.length ? intItems[(NEWS.idx) % intItems.length] : null;
+          const int2 = intItems.length ? intItems[(NEWS.idx + 1) % intItems.length] : null;
+          NEWS.idx = (NEWS.idx + 1) % Math.max(1, items.length);
+          return { pt, int1, int2 };
+        };
+        const { pt, int1, int2 } = pick();
         const nWrap = document.getElementById(`news-${k}`);
-        const nSrc = document.getElementById(`news-src-${k}`);
-        const nTtl = document.getElementById(`news-ttl-${k}`);
-        if(nWrap && nSrc && nTtl){
-          const it = (NEWS.items && NEWS.items.length) ? NEWS.items[NEWS.idx % NEWS.items.length] : null;
-          if(!it){ nSrc.textContent = 'Carregando manchetes…'; nTtl.textContent = '—'; }
-          else { nSrc.textContent = it.source; nTtl.textContent = it.title; NEWS.idx = (NEWS.idx + 1) % NEWS.items.length; }
+        const ptS = document.getElementById(`news-src-pt-${k}`);
+        const ptT = document.getElementById(`news-ttl-pt-${k}`);
+        const i1S = document.getElementById(`news-src-int1-${k}`);
+        const i1T = document.getElementById(`news-ttl-int1-${k}`);
+        const i2S = document.getElementById(`news-src-int2-${k}`);
+        const i2T = document.getElementById(`news-ttl-int2-${k}`);
+        if(nWrap && ptS && ptT && i1S && i1T && i2S && i2T){
+          if(!pt && !int1 && !int2){
+            ptS.textContent = 'Carregando manchetes…'; ptT.textContent = '—';
+            i1S.textContent = '—'; i1T.textContent = '—';
+            i2S.textContent = '—'; i2T.textContent = '—';
+          } else {
+            const set = (S,T,it) => { if(!it){ S.textContent='—'; T.textContent='—'; } else { S.textContent=it.source; T.textContent=it.title; } };
+            set(ptS, ptT, pt);
+            set(i1S, i1T, int1);
+            set(i2S, i2T, int2);
+          }
         }
-        continue; // skip normal render for USDT during news mode
+        continue; // skip normal market render while in news mode
       }
       const dispPrice = choosePrice(st);
       // Atualiza direção de cor com base no preço exibido (sticky até mudar)
