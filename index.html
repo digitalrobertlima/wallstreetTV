@@ -55,10 +55,12 @@
       display:flex; flex-direction:column; gap:14px; min-height: 220px;
     }
     .row{display:flex; align-items:center; justify-content:space-between; gap:12px}
+  /* permitir que a linha interna (preço + delta) encolha dentro do cabeçalho */
+  .tile .row > .row{min-width:0}
     .id{display:flex; align-items:center; gap:10px}
     .ticker{font-size: clamp(18px, 4vw, 28px); font-weight:800; letter-spacing:1px}
     .pair{color:var(--muted); font-size: clamp(11px, 1.6vw, 12px)}
-  .price{font-size: clamp(20px, 4.8vw, 40px); font-weight:900; line-height:1.1}
+  .price{font-size: clamp(18px, 4.4vw, 40px); font-weight:900; line-height:1.1}
   /* prevenir overflow do preço em linhas flex */
   .row .price{min-width:0; flex:1 1 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
     .delta{font-weight:700}
@@ -368,7 +370,7 @@
     for(const c of COINS){
       const k = c.pair, st = S[k];
   const dispPrice = choosePrice(st);
-  setText(`p-${k}`, Number.isFinite(dispPrice) ? fmtBRL.format(dispPrice) : '—');
+  setPrice(`p-${k}`, dispPrice);
       // delta curto vs tick anterior
       let deltaStr = '—', cls = '';
       if(Number.isFinite(st.last) && Number.isFinite(st.prev)){
@@ -399,25 +401,50 @@
       setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
 
       drawSpark(`sp-${k}`, st.history);
-      fitPrice(`p-${k}`);
     }
   }
 
-  // Reduz a fonte do preço se estiver estourando o container
-  function fitPrice(id){
+  // Define preço com fallback de compactação e ajuste iterativo de fonte
+  function setPrice(id, value){
     const el = document.getElementById(id); if(!el) return;
-    const parent = el.parentElement; if(!parent) return;
-    // reset base
+    const parent = el.parentElement; if(!parent){ el.textContent = '—'; return; }
+    if(!Number.isFinite(value)){ el.textContent = '—'; return; }
+    // reset estilo e tenta com formato normal
     el.style.fontSize = '';
-    // mede
+    el.textContent = fmtBRL.format(value);
+    compactToFit(el, parent, value);
+  }
+
+  function compactToFit(el, parent, value){
     const maxW = parent.clientWidth - 4;
+    if(el.scrollWidth <= maxW) return; // já cabe
+    // 1) reduzir fonte gradualmente até limite
+    let style = getComputedStyle(el);
+    let fs = parseFloat(style.fontSize) || 32;
+    let steps = 0;
+    while(el.scrollWidth > maxW && fs > 14 && steps < 6){
+      fs = Math.max(14, Math.floor(fs * 0.9));
+      el.style.fontSize = fs + 'px';
+      steps++;
+    }
     if(el.scrollWidth <= maxW) return;
-    // escala linear simples dentro de limites
-    const style = getComputedStyle(el);
-    const fsPx = parseFloat(style.fontSize) || 32;
-    const ratio = Math.max(0.75, Math.min(1, maxW / el.scrollWidth));
-    const newFs = Math.max(16, Math.floor(fsPx * ratio));
-    el.style.fontSize = newFs + 'px';
+    // 2) usar notação compacta de moeda (K/M/B) preservando BRL
+    const c = Math.abs(value);
+    let short;
+    if(c >= 1_000_000_000){ short = 'R$ ' + (value/1_000_000_000).toFixed(2).replace('.',',') + ' bi'; }
+    else if(c >= 1_000_000){ short = 'R$ ' + (value/1_000_000).toFixed(2).replace('.',',') + ' mi'; }
+    else if(c >= 1_000){ short = 'R$ ' + (value/1_000).toFixed(2).replace('.',',') + ' mil'; }
+    else { short = fmtBRL.format(value); }
+    el.textContent = short;
+    // tenta reduzir um pouco mais se necessário
+    style = getComputedStyle(el);
+    fs = parseFloat(style.fontSize) || 16;
+    steps = 0;
+    while(el.scrollWidth > maxW && fs > 12 && steps < 3){
+      fs = Math.max(12, Math.floor(fs * 0.95));
+      el.style.fontSize = fs + 'px';
+      steps++;
+    }
   }
 
   function choosePrice(st){
