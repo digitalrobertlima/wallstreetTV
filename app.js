@@ -117,11 +117,29 @@
   function chimeError(){ if(!SOUND.enabled || !SOUND.ctx || !SOUND.master) return; const now = SOUND.ctx.currentTime; try{ const o = SOUND.ctx.createOscillator(); const g = SOUND.ctx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(660, now); o.frequency.exponentialRampToValueAtTime(330, now + 0.25); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(1.0, now + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35); o.connect(g); g.connect(SOUND.master); o.start(now); o.stop(now + 0.4); }catch{} }
   if(soundBtn){ soundBtn.addEventListener('click', async ()=>{ await ensureAudio(); toggleSound(); }); }
 
-  // Mostrar badge PWA somente quando de fato em modo instalado/standalone
+  // Mostrar badge PWA somente quando de fato em modo instalado/standalone (robusto)
+  function getDisplayMode(){
+    try{
+      if(('standalone' in navigator) && navigator.standalone === true) return 'standalone';
+      if(document.referrer && document.referrer.startsWith('android-app://')) return 'twa';
+      if(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return 'standalone';
+      if(window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return 'standalone';
+      return 'browser';
+    }catch{ return 'browser'; }
+  }
+  function updatePwaBadge(){ if(!pwaBadge) return; const mode = getDisplayMode(); pwaBadge.hidden = !(mode === 'standalone' || mode === 'twa'); }
+  updatePwaBadge();
+  // reagir a mudanças de display-mode
   try{
-    const isStandalone = (('standalone' in navigator) && navigator.standalone === true) || window.matchMedia('(display-mode: standalone)').matches;
-    if(pwaBadge) pwaBadge.hidden = !isStandalone;
-  }catch{ if(pwaBadge) pwaBadge.hidden = true; }
+    const m1 = window.matchMedia('(display-mode: standalone)');
+    const m2 = window.matchMedia('(display-mode: fullscreen)');
+    const onChange = ()=> updatePwaBadge();
+    if(m1 && m1.addEventListener) m1.addEventListener('change', onChange);
+    if(m2 && m2.addEventListener) m2.addEventListener('change', onChange);
+  }catch{}
+  window.addEventListener('visibilitychange', updatePwaBadge);
+  window.addEventListener('resize', updatePwaBadge);
+  window.addEventListener('appinstalled', updatePwaBadge);
 
   // ===== UI Build ===========================================================
   const tiles = {};
