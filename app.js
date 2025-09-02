@@ -1083,6 +1083,13 @@
     return { bidDisp: Number.isFinite(top.bid)?top.bid:null, askDisp: Number.isFinite(top.ask)?top.ask:null };
   }
 
+  // ===== Small DOM helpers (restore missing fns) ============================
+  function setText(id, text){ const el = document.getElementById(id); if(!el) return; el.textContent = (text === null || text === undefined) ? '—' : String(text); }
+  function setDelta(id, text, cls){ const el = document.getElementById(id); if(!el) return; el.textContent = text || '—'; el.className = `delta ${cls||''}`.trim(); }
+  function setPill(id, text, side){ const el = document.getElementById(id); if(!el) return; el.textContent = text || '—'; el.className = `pill ${side||''}`.trim(); }
+  function humanTime(ts){ try{ const d = (typeof ts === 'number') ? new Date(ts) : new Date(ts); if(!d || isNaN(d.getTime())) return '—'; return d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }catch{ return '—'; } }
+  function setNet(ok){ const dot = document.getElementById('netDot'); if(!dot) return; dot.classList.remove('ok','err'); dot.classList.add(ok ? 'ok' : 'err'); }
+
   // ===== Loop ================================================================
   async function cycle(){
     NET_ERR = false;
