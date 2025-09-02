@@ -215,6 +215,26 @@
 				"push"
 			],
 			"group": "build"
+		},
+		{
+			"label": "git-commit-push-preconnect-and-css",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.longpaths=true",
+				"add",
+				"-A",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"perf(pwa): conditional preconnect with saveData/downlink heuristics + cooldown; fix card text overflow/wrapping on small screens",
+				"&&",
+				"git",
+				"push"
+			],
+			"group": "build"
 		}
 	]
 }

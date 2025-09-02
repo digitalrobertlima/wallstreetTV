@@ -71,9 +71,9 @@ button:hover{background:#232b3a}
 }
 .tile.clickable{cursor:pointer}
 .tile.clickable:hover{filter:brightness(1.02)}
-.row{display:flex; align-items:center; justify-content:space-between; gap:12px}
+.row{display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0}
 .row, .id, .trade{min-width:0}
-.row-tight{gap:10px; flex-wrap: wrap}
+.row-tight{gap:10px; flex-wrap: wrap; align-items:flex-end; min-width:0}
 .align-end{align-items:flex-end}
 .tile .row > .row{min-width:0}
 .id{display:flex; align-items:center; gap:10px}
@@ -93,6 +93,7 @@ button:hover{background:#232b3a}
 .row .price{min-width:0; flex:1 1 auto; white-space:nowrap}
 @media (max-width: 420px){
   .row .price{white-space:normal; line-height:1.1}
+  .row .delta{flex-basis: 100%; white-space:normal; overflow:visible; text-overflow:clip}
 }
 .delta{font-weight:700; white-space:normal; overflow:visible; text-overflow:clip}
 .delta.up{color:var(--up)}

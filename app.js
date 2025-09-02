@@ -50,6 +50,41 @@
   const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
   const TIMEOUT_MS = 9000; // timeout padrão de fetch
 
+  // ===== Preconnect condicional (economia móvel) ============================
+  const PRECONNECT = { last:new Map(), cooldownMs: 5*60*1000 };
+  const ALLOWED_PRECONNECT = new Set([
+    'https://api.bitpreco.com',
+    'https://api.binance.com',
+    'https://api.coingecko.com',
+    'https://www.bitstamp.net',
+    'https://api.exchangerate.host',
+    'https://api.open-meteo.com'
+  ]);
+  function maybePreconnect(url){
+    let origin;
+    try{ origin = new URL(url, location.href).origin; }catch{ return; }
+    if(!ALLOWED_PRECONNECT.has(origin)) return;
+    const now = Date.now();
+    const last = PRECONNECT.last.get(origin) || 0;
+    if((now - last) < PRECONNECT.cooldownMs) return;
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const save = !!(conn && conn.saveData);
+    const down = (conn && typeof conn.downlink === 'number') ? conn.downlink : null;
+    // Heurística: respeitar economia de dados e redes muito lentas
+    if(save) return;
+    if(down != null && down < 1.2) return; // ~3G/slow
+    // Inserir hints se ainda não existirem
+    try{
+      if(!document.querySelector(`link[rel="preconnect"][href="${origin}"]`)){
+        const l = document.createElement('link'); l.rel='preconnect'; l.href=origin; l.crossOrigin='anonymous'; document.head.appendChild(l);
+      }
+      if(!document.querySelector(`link[rel="dns-prefetch"][href="${origin}"]`)){
+        const d = document.createElement('link'); d.rel='dns-prefetch'; d.href=origin; document.head.appendChild(d);
+      }
+      PRECONNECT.last.set(origin, now);
+    }catch{ /* ignore */ }
+  }
+
   // ===== Diagnóstico e persistência =========================================
   const LAT = { samples:[], max:50, avg:0 };
   let ERR_COUNT = 0; let LAST_ERR = null;
@@ -381,6 +416,7 @@
     let attempt = 0; let delay = 500;
     while(true){
       try{
+  if(attempt === 0){ maybePreconnect(url); }
         const controller = new AbortController();
         const timer = setTimeout(()=> controller.abort(), TIMEOUT_MS);
         const t0 = performance.now();
