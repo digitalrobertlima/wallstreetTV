@@ -48,6 +48,7 @@ header{
 .version{padding:6px 10px; border-radius:999px; background:#0d121a; color:#cbd5e1; font-size:12px; font-weight:700; letter-spacing:.4px}
 button{all:unset; cursor:pointer; padding:10px 14px; border-radius:12px; background:#1a202c; color:#e6e6e6; font-weight:600}
 button:hover{background:#232b3a}
+.controls button[aria-pressed="true"]{background:#223047}
 .grid{
   display:grid; gap: var(--grid-gap);
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -113,6 +114,9 @@ footer{padding:8px 14px; color:var(--muted); display:flex; justify-content:space
 @keyframes flashUp{0%{box-shadow:0 0 0 0 rgba(0,200,83,.28), inset 0 0 0 1px rgba(255,255,255,.06)}100%{box-shadow:0 0 0 0 rgba(0,200,83,0), inset 0 0 0 1px rgba(255,255,255,.04)}}
 @keyframes flashDown{0%{box-shadow:0 0 0 0 rgba(255,59,48,.28), inset 0 0 0 1px rgba(255,255,255,.06)}100%{box-shadow:0 0 0 0 rgba(255,59,48,0), inset 0 0 0 1px rgba(255,255,255,.04)}}
 @media (prefers-reduced-motion: reduce){.tile.flash-up,.tile.flash-down{animation:none}}
+/* Strong swing edge: subtle border glow when >1% move in um tick */
+.tile.swing-up{box-shadow:0 0 0 0 rgba(0,200,83,.35), 0 0 24px rgba(0,200,83,.12), inset 0 0 0 1px rgba(255,255,255,.05)}
+.tile.swing-down{box-shadow:0 0 0 0 rgba(255,59,48,.35), 0 0 24px rgba(255,59,48,.12), inset 0 0 0 1px rgba(255,255,255,.05)}
 @keyframes blinkUp{0%,100%{background:transparent}50%{background:rgba(0,200,83,.18)}}
 @keyframes blinkDown{0%,100%{background:transparent}50%{background:rgba(255,59,48,.18)}}
 @keyframes blinkFlat{0%,100%{background:transparent}50%{background:rgba(255,255,255,.08)}}
