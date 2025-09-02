@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests">
+  <title>Gráfico • WallStreetTV</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    .chart-wrap{display:flex; flex-direction:column; gap:12px; padding:16px}
+    .chart-head{display:flex; align-items:center; justify-content:space-between; gap:12px}
+    .big{font-size: clamp(18px, 4vw, 28px); font-weight:800}
+    canvas#big{width:100%; height:60vh; background:#0b0f16; border-radius:12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <a class="back" href="./index.html">← Voltar</a>
+      <div class="big" id="title">—</div>
+      <div class="range" role="group" aria-label="Período do gráfico">
+        <button class="rg" data-rg="1h">1h</button>
+        <button class="rg" data-rg="4h">4h</button>
+        <button class="rg" data-rg="24h">24h</button>
+      </div>
+    </header>
+    <div class="chart-wrap">
+      <canvas id="big" width="1600" height="800" aria-label="Gráfico detalhado"></canvas>
+      <div class="sub" id="src">Fonte: BitPreço/Binance/CoinGecko</div>
+    </div>
+  </div>
+  <script src="./chart.js" defer></script>
+</body>
+</html>

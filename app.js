@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = 'v0.0.8';
+  const APP_VERSION = 'v0.0.9';
   // ===== CONFIG ==============================================================
   const REFRESH_MS = 35_000; // 35 segundos
   const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
@@ -288,11 +288,12 @@
 
   COINS.forEach(c => {
     const tile = document.createElement('section');
-    tile.className = 'tile';
+    tile.className = 'tile clickable';
     tile.innerHTML = `
       <div class="row">
         <div class="id">
           <div class="ticker">${c.symbol}</div>
+          <span class="trend" id="ar-${c.pair}" aria-hidden="true">●</span>
           <div class="pair">${c.label}</div>
           <span class="mini-dot" id="md-${c.pair}" aria-hidden="true"></span>
         </div>
@@ -306,7 +307,6 @@
         <div class="kpi"><div class="label">Baixa 24h</div><div class="value" id="lo-${c.pair}">—</div></div>
         <div class="kpi"><div class="label">Volume 24h</div><div class="value" id="vo-${c.pair}">—</div></div>
       </div>
-      <canvas class="spark" id="sp-${c.pair}" width="600" height="140" aria-label="mini gráfico da ${c.label}"></canvas>
       <div class="book">
         <div class="kpi"><div class="label">L1 BID</div><div class="value" id="bid-${c.pair}">—</div></div>
         <div class="kpi"><div class="label">L1 ASK</div><div class="value" id="ask-${c.pair}">—</div></div>
@@ -330,10 +330,13 @@
     `;
     grid.appendChild(tile);
     tiles[c.pair] = tile;
+    // Navegação para gráfico detalhado ao clicar no card
+    tile.addEventListener('click', ()=>{ try{ window.location.href = `./chart.html?pair=${encodeURIComponent(c.pair)}`; }catch{ location.assign(`./chart.html?pair=${encodeURIComponent(c.pair)}`); } });
     // Listener do botão de áudio por ativo
     const btn = tile.querySelector(`#au-${c.pair}`);
     if(btn){
-      btn.addEventListener('click', ()=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
         const st = S[c.pair]; st.aud = !st.aud; btn.setAttribute('aria-pressed', String(st.aud)); btn.textContent = st.aud ? '🔊' : '🔇';
         AUD_PREFS[c.pair] = st.aud ? true : false;
         try{ localStorage.setItem('wstv_aud_pairs', JSON.stringify(AUD_PREFS)); }catch{}
@@ -345,7 +348,8 @@
     const soloBtn = tile.querySelector(`#so-${c.pair}`);
     if(soloBtn){
       if(AUD_SOLO===c.pair) tile.classList.add('solo');
-      soloBtn.addEventListener('click', ()=>{
+      soloBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
         if(AUD_SOLO === c.pair){
           AUD_SOLO = null;
           tile.classList.remove('solo');
@@ -748,7 +752,14 @@
         dStr = `${pct>=0?'+':''}${pct.toFixed(2)}% • σ ${sigma.toFixed(2)}%`;
         dCls = pct>0 ? 'up' : pct<0 ? 'down' : '';
       }
-  setDelta(`d-${k}`, dStr, dCls);
+      setDelta(`d-${k}`, dStr, dCls);
+      // Trend arrow next to symbol
+      const ar = document.getElementById(`ar-${k}`);
+      if(ar){
+        if(dCls==='up'){ ar.textContent='▲'; ar.style.color='var(--up)'; }
+        else if(dCls==='down'){ ar.textContent='▼'; ar.style.color='var(--down)'; }
+        else { ar.textContent='•'; ar.style.color='var(--muted)'; }
+      }
   const stats = chooseStats(st);
   setText(`hi-${k}`, Number.isFinite(stats.hi) ? fmtBRL.format(stats.hi) : '—');
   setText(`lo-${k}`, Number.isFinite(stats.lo) ? fmtBRL.format(stats.lo) : '—');
@@ -764,9 +775,7 @@
       setText(`ta-${k}`, tr?.amount != null ? `${fmtNum.format(Number(tr.amount))}` : '—');
       setText(`tp-${k}`, tr?.price  != null ? fmtBRL.format(Number(tr.price)) : '—');
       setText(`ts-${k}`, tr?.timestamp ? humanTime(tr.timestamp) : '—');
-  const binMs = binSizeForRange(RANGE_CUR);
-  const candles = makeCandles(tsF, seriesF, binMs);
-  drawCandles(`sp-${k}`, candles);
+  // chart removed from card for cleaner view
     }
     // Atualiza barra de humor do mercado (proporção verde x vermelho)
     if(moodBar){

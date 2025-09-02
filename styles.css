@@ -69,6 +69,8 @@ button:hover{background:#232b3a}
   box-shadow: 0 8px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04);
   display:flex; flex-direction:column; gap:14px; min-height: 220px;
 }
+.tile.clickable{cursor:pointer}
+.tile.clickable:hover{filter:brightness(1.02)}
 .row{display:flex; align-items:center; justify-content:space-between; gap:12px}
 .row, .id, .trade{min-width:0}
 .row-tight{gap:10px; flex-wrap: wrap}
@@ -85,6 +87,7 @@ button:hover{background:#232b3a}
 .mini-dot.ping{background:#99f6e4; box-shadow:0 0 0 8px rgba(153,246,228,.0); animation: dotPing .8s ease-out}
 @keyframes dotPing{0%{box-shadow:0 0 0 0 rgba(153,246,228,.25)}100%{box-shadow:0 0 0 8px rgba(153,246,228,0)}}
 .ticker{font-size: clamp(18px, 4vw, 28px); font-weight:800; letter-spacing:1px}
+.trend{font-size:14px; margin: 0 6px 0 6px; color:var(--muted)}
 .pair{color:var(--muted); font-size: clamp(11px, 1.6vw, 12px)}
 .price{font-size: clamp(18px, 4.4vw, 40px); font-weight:900; line-height:1.1}
 .row .price{min-width:0; flex:1 1 auto; white-space:nowrap}
