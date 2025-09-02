@@ -108,11 +108,20 @@
 (() => {
   // ===== CONFIG ==============================================================
   const REFRESH_MS = 35_000; // 35 segundos
+  const REFRESH_HIDDEN_MS = 90_000; // reduzir consumo quando aba estiver oculta
   const MAX_POINTS = 360;    // ~3.5h de histórico
+  const TARGET_MAX_REQ_PER_MIN = 28; // margem de segurança sob 30/min
   const COINS = [
     { symbol: 'BTC', pair: 'btc-brl', label: 'BTC/BRL' },
     { symbol: 'ETH', pair: 'eth-brl', label: 'ETH/BRL' },
     { symbol: 'BNB', pair: 'bnb-brl', label: 'BNB/BRL' },
+  // adicionados
+  { symbol: 'USDT', pair: 'usdt-brl', label: 'USDT/BRL' },
+  { symbol: 'USDC', pair: 'usdc-brl', label: 'USDC/BRL' },
+  { symbol: 'SOL',  pair: 'sol-brl',  label: 'SOL/BRL'  },
+  { symbol: 'ADA',  pair: 'ada-brl',  label: 'ADA/BRL'  },
+  { symbol: 'XRP',  pair: 'xrp-brl',  label: 'XRP/BRL'  },
+  { symbol: 'DOGE', pair: 'doge-brl', label: 'DOGE/BRL' },
   ];
   const ENDPOINTS = {
     TICKERS_ALL: 'https://api.bitpreco.com/all-brl/ticker',
@@ -122,6 +131,17 @@
   };
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' });
   const fmtNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 8 });
+  const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
+
+  function computeTradesEvery(baseMs){
+    const N = COINS.length;
+    const cpm = 60_000 / baseMs; // ciclos por minuto
+    const baseline = cpm * (1 + N); // all-brl + orderbooks por ciclo
+    const budget = TARGET_MAX_REQ_PER_MIN - baseline;
+    if (budget <= 0) return 9999; // desabilita trades na prática
+    const freq = Math.ceil((cpm * N) / budget); // ciclos entre fetch de trades
+    return Math.max(1, Math.min(10, freq));
+  }
 
   // ===== STATE ===============================================================
   const S = Object.fromEntries(COINS.map(c => [c.pair, {
@@ -179,17 +199,38 @@
 
   // ===== FETCHERS ============================================================
   async function getJSON(url){
-    const res = await fetch(url, { cache:'no-store' });
-    if(!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
-    return await res.json();
+    let attempt = 0;
+    let delay = 500; // ms
+    while(true){
+      try{
+        const res = await fetch(url, { cache:'no-store' });
+        if(res.status === 429){
+          // respeitar Retry-After se presente
+          const ra = res.headers.get('Retry-After');
+          const raMs = ra ? (Number(ra) * 1000) : delay;
+          await sleep(raMs + Math.random()*250);
+          attempt++; delay *= 2;
+          if(attempt >= 3) throw new Error(`HTTP 429 (limite) @ ${url}`);
+          continue;
+        }
+        if(!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
+        return await res.json();
+      }catch(err){
+        attempt++;
+        if(attempt >= 3) throw err;
+        await sleep(delay + Math.random()*200);
+        delay *= 2;
+      }
+    }
   }
 
   async function fetchTickers(){
     try {
       const data = await getJSON(ENDPOINTS.TICKERS_ALL);
       for(const c of COINS){
-        const k = c.pair; // chave "btc-brl" etc.
-        const t = data[k] || data[c.symbol] || data[c.symbol?.toLowerCase?.()] || data[c.symbol?.toUpperCase?.()];
+        const k = c.pair; // ex.: "btc-brl"
+        const keyUpperPair = k.toUpperCase(); // ex.: "BTC-BRL" (como vem no all-brl)
+        const t = data[keyUpperPair] || data[k] || data[c.symbol] || data[c.symbol?.toUpperCase?.()] || data[c.symbol?.toLowerCase?.()];
         if(t){
           applyTicker(k, t);
         } else {
@@ -222,24 +263,35 @@
     }
   }
 
+  // Para reduzir chamadas, buscamos TRADES em frequência dinâmica
+  let cycleCount = 0;
+  let FETCH_TRADES_EVERY = computeTradesEvery(REFRESH_MS);
   async function fetchOrderbookAndTrades(){
-    await Promise.all(COINS.map(async c => {
-      const pair = c.pair;
-      try{
-        const ob = await getJSON(ENDPOINTS.ORDERBOOK(pair));
-        const bestBid = ob.bids && ob.bids.length ? ob.bids[0] : null;
-        const bestAsk = ob.asks && ob.asks.length ? ob.asks[0] : null;
-        const bid = bestBid ? Number(bestBid.price ?? bestBid[1] ?? bestBid) : null;
-        const ask = bestAsk ? Number(bestAsk.price ?? bestAsk[1] ?? bestAsk) : null;
-        S[pair].bid = bid; S[pair].ask = ask; S[pair].spread = (bid && ask) ? (ask - bid) : null;
-      }catch(e){ console.error('orderbook falhou', pair, e); }
-      try{
-        const tr = await getJSON(ENDPOINTS.TRADES(pair));
-        // escolher a negociação mais recente
-        const last = Array.isArray(tr) && tr.length ? tr.reduce((a,b)=> new Date(b.timestamp) > new Date(a.timestamp) ? b : a) : null;
-        S[pair].trade = last || null;
-      }catch(e){ console.error('trades falhou', pair, e); }
-    }));
+    const shouldFetchTrades = !document.hidden && ((cycleCount % FETCH_TRADES_EVERY) === 0);
+    const BATCH = 3; // limitar bursts
+    for(let i=0;i<COINS.length;i+=BATCH){
+      const batch = COINS.slice(i, i+BATCH);
+      await Promise.all(batch.map(async c => {
+        const pair = c.pair;
+        try{
+          const ob = await getJSON(ENDPOINTS.ORDERBOOK(pair));
+          const bestBid = ob.bids && ob.bids.length ? ob.bids[0] : null;
+          const bestAsk = ob.asks && ob.asks.length ? ob.asks[0] : null;
+          const bid = bestBid ? Number(bestBid.price ?? bestBid[1] ?? bestBid) : null;
+          const ask = bestAsk ? Number(bestAsk.price ?? bestAsk[1] ?? bestAsk) : null;
+          S[pair].bid = bid; S[pair].ask = ask; S[pair].spread = (bid && ask) ? (ask - bid) : null;
+        }catch(e){ console.error('orderbook falhou', pair, e); }
+        if(shouldFetchTrades){
+          try{
+            const tr = await getJSON(ENDPOINTS.TRADES(pair));
+            // escolher a negociação mais recente
+            const last = Array.isArray(tr) && tr.length ? tr.reduce((a,b)=> new Date(b.timestamp) > new Date(a.timestamp) ? b : a) : null;
+            S[pair].trade = last || null;
+          }catch(e){ console.error('trades falhou', pair, e); }
+        }
+      }));
+      await sleep(200); // pequeno intervalo entre lotes
+    }
   }
 
   // ===== RENDER ==============================================================
@@ -347,11 +399,28 @@
     await fetchOrderbookAndTrades();
     render();
     lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  cycleCount++;
   }
 
+  // ===== SCHEDULER: evita sobreposição e ajusta conforme visibilidade =======
+  let _cycleTimer = null;
+  let _isRunning = false;
+  function nextDelay(){ return document.hidden ? REFRESH_HIDDEN_MS : REFRESH_MS; }
+  function scheduleNext(ms){ if(_cycleTimer) clearTimeout(_cycleTimer); _cycleTimer = setTimeout(runCycle, ms); }
+  async function runCycle(){
+    if(_isRunning){ scheduleNext(250); return; }
+    _isRunning = true;
+    try{ await cycle(); }
+    catch(e){ console.error('cycle erro:', e); }
+    finally{ _isRunning = false; scheduleNext(nextDelay()); }
+  }
   // kick
-  cycle();
-  const timer = setInterval(cycle, REFRESH_MS);
+  runCycle();
+  document.addEventListener('visibilitychange', () => {
+    // Recalcular frequência de trades quando voltar a ficar visível
+    if(!document.hidden){ FETCH_TRADES_EVERY = computeTradesEvery(REFRESH_MS); }
+    scheduleNext(250);
+  });
 
   // ===== FULLSCREEN ==========================================================
   const fsBtn = document.getElementById('fullscreenBtn');
